@@ -90,18 +90,7 @@ jobs:
             echo "Failed to create Fly.io app. Check token or app name uniqueness."
             exit 1
           fi
-          echo "App created successfully"
-      - name: Scale Fly.io app to 1 machine
-        env:
-          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
-        run: |
-          echo "Scaling Fly.io app ${{ github.event.inputs.fly_app_name }} to 1 machine"
-          flyctl scale count 1 --app ${{ github.event.inputs.fly_app_name }} || {
-            echo "Failed to scale app. Current status:"
-            flyctl status --app ${{ github.event.inputs.fly_app_name }}
-            exit 1
-          }
-          echo "Successfully scaled to 1 machine"    
+          echo "App created successfully"  
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
@@ -114,6 +103,17 @@ jobs:
             exit 1
           }
           echo "Deployment successful"
+      - name: Scale Fly.io app to 1 machine
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Scaling Fly.io app ${{ github.event.inputs.fly_app_name }} to 1 machine"
+          flyctl scale count 1 --app ${{ github.event.inputs.fly_app_name }} || {
+            echo "Failed to scale app. Current status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Successfully scaled to 1 machine"      
       - name: Verify push and deployment
         run: |
           echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
