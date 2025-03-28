@@ -1,4 +1,4 @@
-name: Clone and Push
+name: Clone, Push, and Deploy
 
 on:
   workflow_dispatch:
@@ -14,13 +14,25 @@ on:
       github_token:
         description: "GitHub Personal Access Token with repo permissions"
         required: true
+      fly_api_token:
+        description: "Fly.io API Token for deployment"
+        required: true
+      fly_app_name:
+        description: "Name of the Fly.io app to deploy to"
+        required: true
+        default: "my-fly-app"
 
 jobs:
-  clone-and-push:
+  clone-push-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y curl git
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl git
+          curl -fsSL https://fly.io/install.sh | sh  # 安装 flyctl
+          export PATH="$HOME/.fly/bin:$PATH"
+          flyctl version  # 验证安装
       - name: Clone source repository
         run: |
           echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
@@ -60,6 +72,28 @@ jobs:
             git ls-remote new-origin
             exit 1
           }
-      - name: Verify push
+      - name: Create Fly.io app
         run: |
-          echo "Successfully pushed to https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
+          echo "Authenticating with Fly.io"
+          flyctl auth token ${{ github.event.inputs.fly_api_token }}
+          echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
+          flyctl apps create ${{ github.event.inputs.fly_app_name }} --json || {
+            echo "App creation failed. Checking if it already exists:"
+            flyctl apps list --json
+            exit 1
+          }
+          echo "App created successfully"
+      - name: Deploy to Fly.io
+        run: |
+          cd /tmp/source-repo
+          echo "Deploying to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
+          flyctl deploy --app ${{ github.event.inputs.fly_app_name }} || {
+            echo "Deployment failed. Fly.io status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Deployment successful"
+      - name: Verify push and deployment
+        run: |
+          echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
+          echo "Deployed to: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
