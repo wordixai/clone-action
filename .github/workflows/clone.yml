@@ -36,8 +36,11 @@ jobs:
           mkdir -p $HOME/.fly/bin
           mv $HOME/flyctl $HOME/.fly/bin/flyctl
           chmod +x $HOME/.fly/bin/flyctl
-          echo "$HOME/.fly/bin" >> $GITHUB_PATH
-          flyctl version || {
+          # 临时更新当前步骤的 PATH
+          export PATH="$HOME/.fly/bin:$PATH"
+          echo "$HOME/.fly/bin" >> $GITHUB_PATH  # 为后续步骤设置 PATH
+          # 使用完整路径验证安装
+          $HOME/.fly/bin/flyctl version || {
             echo "Failed to install flyctl. PATH: $PATH"
             ls -la $HOME/.fly/bin
             exit 1
