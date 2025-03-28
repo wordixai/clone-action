@@ -27,11 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout workflow repository
-        uses: actions/checkout@v2  # 更新到最新版本
+        uses: actions/checkout@v4
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
         with:
-          version: 0.0.462  # 固定版本，与之前一致
+          version: "0.3.94"
       - name: Clone source repository
         run: |
           echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
@@ -70,6 +70,27 @@ jobs:
             git ls-remote new-origin
             exit 1
           }
+      - name: Create Fly.io app via API
+        run: |
+          echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://api.machines.dev/v1/apps" \
+            -d '{
+              "org_slug": "personal",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "enable_subdomains": true
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "HTTP Status: $RESPONSE"
+          echo "API Response:"
+          cat response.json
+          if [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to create Fly.io app. Check token or app name uniqueness."
+            exit 1
+          fi
+          echo "App created successfully"
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
