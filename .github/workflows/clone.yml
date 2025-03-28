@@ -31,8 +31,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl git
           # 直接下载 flyctl 二进制文件
-          FLYCTL_VERSION="v0.3.94"  # 可根据需要更新版本
-          curl -L "https://github.com/superfly/flyctl/releases/download/${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz" -o flyctl.tar.gz
+          curl -L "https://github.com/superfly/flyctl/releases/download/v0.3.94/flyctl_0.3.94_Linux_x86_64.tar.gz" -o flyctl.tar.gz
           tar -xzf flyctl.tar.gz -C $HOME
           mv $HOME/flyctl $HOME/.fly/bin/flyctl
           chmod +x $HOME/.fly/bin/flyctl
