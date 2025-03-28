@@ -36,10 +36,8 @@ jobs:
           mkdir -p $HOME/.fly/bin
           mv $HOME/flyctl $HOME/.fly/bin/flyctl
           chmod +x $HOME/.fly/bin/flyctl
-          # 临时更新当前步骤的 PATH
           export PATH="$HOME/.fly/bin:$PATH"
-          echo "$HOME/.fly/bin" >> $GITHUB_PATH  # 为后续步骤设置 PATH
-          # 使用完整路径验证安装
+          echo "$HOME/.fly/bin" >> $GITHUB_PATH
           $HOME/.fly/bin/flyctl version || {
             echo "Failed to install flyctl. PATH: $PATH"
             ls -la $HOME/.fly/bin
@@ -84,10 +82,17 @@ jobs:
             git ls-remote new-origin
             exit 1
           }
+      - name: Authenticate with Fly.io
+        run: |
+          echo "Authenticating with Fly.io using flyctl auth login"
+          flyctl auth login --access-token "${{ github.event.inputs.fly_api_token }}" || {
+            echo "Authentication failed"
+            exit 1
+          }
+          echo "Authentication successful"
+          flyctl auth whoami  # 显示当前登录用户
       - name: Create Fly.io app
         run: |
-          echo "Authenticating with Fly.io"
-          flyctl auth token ${{ github.event.inputs.fly_api_token }}
           echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
           flyctl apps create ${{ github.event.inputs.fly_app_name }} --json || {
             echo "App creation failed. Checking if it already exists:"
