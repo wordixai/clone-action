@@ -70,17 +70,6 @@ jobs:
             git ls-remote new-origin
             exit 1
           }
-      - name: Create Fly.io app
-        env:
-          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
-        run: |
-          echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
-          flyctl apps create ${{ github.event.inputs.fly_app_name }} --json || {
-            echo "App creation failed. Checking if it already exists:"
-            flyctl apps list --json
-            exit 1
-          }
-          echo "App created successfully"
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
