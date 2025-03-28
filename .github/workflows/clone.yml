@@ -91,6 +91,17 @@ jobs:
             exit 1
           fi
           echo "App created successfully"
+      - name: Scale Fly.io app to 1 machine
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Scaling Fly.io app ${{ github.event.inputs.fly_app_name }} to 1 machine"
+          flyctl scale count 1 --app ${{ github.event.inputs.fly_app_name }} || {
+            echo "Failed to scale app. Current status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Successfully scaled to 1 machine"    
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
