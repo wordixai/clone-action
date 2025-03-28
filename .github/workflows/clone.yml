@@ -30,8 +30,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl git
-          # 安装 flyctl，指定安装目录
-          curl -L https://fly.io/install.sh | sh -s -- -b "$HOME/.fly/bin"
+          # 直接下载 flyctl 二进制文件
+          FLYCTL_VERSION="v0.3.94"  # 可根据需要更新版本
+          curl -L "https://github.com/superfly/flyctl/releases/download/${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz" -o flyctl.tar.gz
+          tar -xzf flyctl.tar.gz -C $HOME
+          mv $HOME/flyctl $HOME/.fly/bin/flyctl
+          chmod +x $HOME/.fly/bin/flyctl
           echo "$HOME/.fly/bin" >> $GITHUB_PATH
           flyctl version || {
             echo "Failed to install flyctl. PATH: $PATH"
