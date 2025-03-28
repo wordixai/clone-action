@@ -1,4 +1,4 @@
-name: Clone, Push, and Deploy
+name: Clone, Push, and Deploy to Fly
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       source_repo_url:
         description: "URL of the source GitHub repository to clone"
         required: true
-        default: "https://github.com/default-user/default-repo.git"
+        default: "https://github.com/fly-apps/hello-fly.git"
       new_repo_name:
         description: "Name of the new GitHub repository to create"
         required: true
@@ -26,30 +26,18 @@ jobs:
   clone-push-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl git
-          # 下载并安装 flyctl v0.3.94
-          curl -L "https://github.com/superfly/flyctl/releases/download/v0.3.94/flyctl_0.3.94_Linux_x86_64.tar.gz" -o flyctl.tar.gz
-          tar -xzf flyctl.tar.gz -C $HOME
-          mkdir -p $HOME/.fly/bin
-          mv $HOME/flyctl $HOME/.fly/bin/flyctl
-          chmod +x $HOME/.fly/bin/flyctl
-          export PATH="$HOME/.fly/bin:$PATH"
-          echo "$HOME/.fly/bin" >> $GITHUB_PATH
-          $HOME/.fly/bin/flyctl version || {
-            echo "Failed to install flyctl. PATH: $PATH"
-            ls -la $HOME/.fly/bin
-            exit 1
-          }
+      - name: Checkout workflow repository
+        uses: actions/checkout@v2  # 更新到最新版本
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: 0.0.462  # 固定版本，与之前一致
       - name: Clone source repository
         run: |
           echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
           git clone ${{ github.event.inputs.source_repo_url }} /tmp/source-repo
           cd /tmp/source-repo
           DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
-          echo "Default branch detected: $DEFAULT_BRANCH"
           echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
           echo "Cloned repository contents:"
           ls -la /tmp/source-repo
@@ -82,16 +70,9 @@ jobs:
             git ls-remote new-origin
             exit 1
           }
-      - name: Authenticate with Fly.io
-        run: |
-          echo "Authenticating with Fly.io using flyctl auth login"
-          flyctl auth login --access-token "${{ github.event.inputs.fly_api_token }}" || {
-            echo "Authentication failed"
-            exit 1
-          }
-          echo "Authentication successful"
-          flyctl auth whoami  # 显示当前登录用户
       - name: Create Fly.io app
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
           echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
           flyctl apps create ${{ github.event.inputs.fly_app_name }} --json || {
@@ -101,10 +82,12 @@ jobs:
           }
           echo "App created successfully"
       - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
           cd /tmp/source-repo
           echo "Deploying to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
-          flyctl deploy --app ${{ github.event.inputs.fly_app_name }} || {
+          flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only || {
             echo "Deployment failed. Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
