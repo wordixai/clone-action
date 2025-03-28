@@ -1,0 +1,40 @@
+name: Clone and Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo_url:
+        description: "URL of the source GitHub repository to clone"
+        required: true
+        default: "https://github.com/default-user/default-repo.git"
+      new_repo_name:
+        description: "Name of the new GitHub repository to create"
+        required: true
+        default: "my-new-repo"
+
+jobs:
+  clone-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y curl git
+      - name: Clone source repository
+        run: |
+          git clone ${{ github.event.inputs.source_repo_url }} /tmp/source-repo
+      - name: Create new GitHub repository
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/user/repos \
+            -d "{\"name\":\"${{ github.event.inputs.new_repo_name }}\",\"private\":false}"
+      - name: Configure Git and push to new repo
+        run: |
+          cd /tmp/source-repo
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+          git remote add new-origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git
+          git push new-origin main  # 假设源仓库默认分支是 main
+      - name: Verify push
+        run: |
+          echo "Pushed to https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
