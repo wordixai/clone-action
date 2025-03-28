@@ -30,10 +30,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl git
-          # 安装 flyctl 并确保全局可用
-          curl -fsSL https://fly.io/install.sh | sh -s -- -b $HOME/.fly/bin
-          echo "$HOME/.fly/bin" >> $GITHUB_PATH  # 将 flyctl 路径添加到 GITHUB_PATH
-          $HOME/.fly/bin/flyctl version  # 验证安装
+          # 安装 flyctl，指定安装目录
+          curl -L https://fly.io/install.sh | sh -s -- -b "$HOME/.fly/bin"
+          echo "$HOME/.fly/bin" >> $GITHUB_PATH
+          flyctl version || {
+            echo "Failed to install flyctl. PATH: $PATH"
+            ls -la $HOME/.fly/bin
+            exit 1
+          }
       - name: Clone source repository
         run: |
           echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
