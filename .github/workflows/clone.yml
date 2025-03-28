@@ -11,6 +11,9 @@ on:
         description: "Name of the new GitHub repository to create"
         required: true
         default: "my-new-repo"
+      github_token:
+        description: "GitHub Personal Access Token with repo permissions"
+        required: true
 
 jobs:
   clone-and-push:
@@ -20,21 +23,43 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y curl git
       - name: Clone source repository
         run: |
+          echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
           git clone ${{ github.event.inputs.source_repo_url }} /tmp/source-repo
+          cd /tmp/source-repo
+          DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+          echo "Default branch detected: $DEFAULT_BRANCH"
+          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
+          echo "Cloned repository contents:"
+          ls -la /tmp/source-repo
       - name: Create new GitHub repository
         run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          echo "Creating new repository: ${{ github.event.inputs.new_repo_name }}"
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: token ${{ github.event.inputs.github_token }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/user/repos \
-            -d "{\"name\":\"${{ github.event.inputs.new_repo_name }}\",\"private\":false}"
+            -d "{\"name\":\"${{ github.event.inputs.new_repo_name }}\",\"private\":false}" \
+            -w "%{http_code}" -s -o response.json)
+          echo "HTTP Status: $RESPONSE"
+          echo "API Response:"
+          cat response.json
+          if [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to create repository. Exiting."
+            exit 1
+          fi
       - name: Configure Git and push to new repo
         run: |
           cd /tmp/source-repo
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
-          git remote add new-origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git
-          git push new-origin main  # 假设源仓库默认分支是 main
+          REMOTE_URL=https://x-access-token:${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git
+          echo "Pushing to: $REMOTE_URL"
+          git remote add new-origin "$REMOTE_URL"
+          git push new-origin ${{ env.DEFAULT_BRANCH }} || {
+            echo "Push failed. Remote branches:"
+            git ls-remote new-origin
+            exit 1
+          }
       - name: Verify push
         run: |
-          echo "Pushed to https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
+          echo "Successfully pushed to https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
