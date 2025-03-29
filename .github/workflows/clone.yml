@@ -114,33 +114,36 @@ jobs:
             exit 1
           }
           echo "Successfully scaled to 1 machine"
-      - name: Login to Fly.io machine and associate with GitHub
+      - name: Login to Fly.io machine and pull from GitHub
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
           echo "Logging into Fly.io machine for app: ${{ github.event.inputs.fly_app_name }}"
-          # 使用带 Token 的 GitHub URL 设置远程仓库
+          # 使用带 Token 的 GitHub URL 设置远程仓库并强制拉取
           GITHUB_REMOTE_URL="https://${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git"
           flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
             echo \"Associating with GitHub repo: $GITHUB_REMOTE_URL\"; \
             if [ -d .git ]; then \
               git remote set-url origin $GITHUB_REMOTE_URL; \
               git remote -v; \
-              echo \"Testing pull permissions...\"; \
-              git fetch origin || echo \"Fetch failed\"; \
+              echo \"Fetching and resetting to remote...\"; \
+              git fetch origin; \
+              git reset --hard origin/main || echo \"Reset failed\"; \
             else \
-              echo \"No .git directory found, initializing...\"; \
+              echo \"No .git directory found, initializing and pulling...\"; \
               git init; \
               git remote add origin $GITHUB_REMOTE_URL; \
               git remote -v; \
-              echo \"Testing pull permissions...\"; \
-              git fetch origin || echo \"Fetch failed\"; \
-            fi'" || {
-            echo "Failed to login or associate with GitHub. Fly.io status:"
+              echo \"Fetching and resetting to remote...\"; \
+              git fetch origin; \
+              git reset --hard origin/main || echo \"Reset failed\"; \
+            fi; \
+            ls -la'" || {
+            echo "Failed to login or pull from GitHub. Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
-          echo "Successfully associated machine with GitHub repo"  
+          echo "Successfully pulled from GitHub and reset to remote"
       - name: Verify push and deployment
         run: |
           echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
