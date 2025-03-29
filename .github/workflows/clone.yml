@@ -70,6 +70,9 @@ jobs:
             git ls-remote new-origin
             exit 1
           }
+          # 记录提交哈希
+          COMMIT_HASH=$(git rev-parse HEAD)
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
       - name: Create Fly.io app via API
         run: |
           echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
@@ -91,13 +94,15 @@ jobs:
             exit 1
           fi
           echo "App created successfully"
-      - name: Deploy to Fly.io
+      - name: Deploy to Fly.io with GitHub metadata
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
           cd /tmp/source-repo
           echo "Deploying to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
-          flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only || {
+          flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only \
+            --metadata "GITHUB_REPO=https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}" \
+            --metadata "GITHUB_COMMIT=${{ env.COMMIT_HASH }}" || {
             echo "Deployment failed. Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
@@ -113,8 +118,31 @@ jobs:
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
-          echo "Successfully scaled to 1 machine"      
+          echo "Successfully scaled to 1 machine"
+      - name: Login to Fly.io machine and associate with GitHub
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Logging into Fly.io machine for app: ${{ github.event.inputs.fly_app_name }}"
+          # 使用 flyctl ssh console 执行命令
+          flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
+            echo \"Associating with GitHub repo: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}\"; \
+            if [ -d .git ]; then \
+              git remote set-url origin https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git; \
+              git remote -v; \
+            else \
+              echo \"No .git directory found, initializing...\"; \
+              git init; \
+              git remote add origin https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git; \
+              git remote -v; \
+            fi'" || {
+            echo "Failed to login or associate with GitHub. Fly.io status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Successfully associated machine with GitHub repo"
       - name: Verify push and deployment
         run: |
           echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
           echo "Deployed to: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
+          echo "Deployed commit: ${{ env.COMMIT_HASH }}"
