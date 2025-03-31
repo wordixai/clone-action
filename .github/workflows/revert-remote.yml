@@ -3,15 +3,15 @@ name: Revert Commit in Remote Repo
 on:
   workflow_dispatch:
     inputs:
-      source_repo_url:
-        description: 'The GitHub repository URL (e.g., https://github.com/otheruser/otherrepo)'
-        required: true
       commit_sha:
         description: 'The commit SHA to revert'
         required: true
       branch:
         description: 'The branch to operate on'
-        default: 'main'
+        required: true
+      repo_name:
+        description: 'The repository name (e.g., genfly-${appName})'
+        required: true
 
 jobs:
   revert-remote:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Clone source repository
         run: |
-          git clone https://x-access-token:${{ secrets.TARGET_REPO_TOKEN }}@${{ github.event.inputs.source_repo_url }} /tmp/source-repo
+          git clone https://x-access-token:${{ env.GITHUB_TOKEN }}@github.com/wordixai/${{ github.event.inputs.repo_name }} /tmp/source-repo
           cd /tmp/source-repo
           git checkout ${{ github.event.inputs.branch }}
 
@@ -39,3 +39,6 @@ jobs:
         run: |
           cd /tmp/source-repo
           git push origin ${{ github.event.inputs.branch }}
+
+env:
+  GITHUB_TOKEN: ${{ secrets.NEXT_PUBLIC_GITHUB_TOKEN }}
