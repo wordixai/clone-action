@@ -12,6 +12,9 @@ on:
       repo_name:
         description: 'The repository name (e.g., genfly-${appName})'
         required: true
+      github_token:
+        description: 'The GitHub token for authentication'
+        required: true
 
 jobs:
   revert-remote:
@@ -19,7 +22,7 @@ jobs:
     steps:
       - name: Clone source repository
         run: |
-          git clone https://x-access-token:${{ env.GITHUB_TOKEN }}@github.com/wordixai/${{ github.event.inputs.repo_name }} /tmp/source-repo
+          git clone https://x-access-token:${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.repo_name }} /tmp/source-repo
           cd /tmp/source-repo
           git checkout ${{ github.event.inputs.branch }}
 
@@ -39,6 +42,3 @@ jobs:
         run: |
           cd /tmp/source-repo
           git push origin ${{ github.event.inputs.branch }}
-
-env:
-  GITHUB_TOKEN: ${{ secrets.NEXT_PUBLIC_GITHUB_TOKEN }}
