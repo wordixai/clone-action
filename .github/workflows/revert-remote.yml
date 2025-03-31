@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Clone source repository
         run: |
-          git clone https://x-access-token:${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.repo_name }} /tmp/source-repo
+          git clone https://x-access-token:${{ github.event.inputs.github_token }}@github.com/wordixai/${{ github.event.inputs.repo_name }} /tmp/source-repo
           cd /tmp/source-repo
           git checkout ${{ github.event.inputs.branch }}
 
@@ -32,11 +32,12 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
 
-      - name: Revert specified commit
+      - name: Force revert specified commit
         run: |
           cd /tmp/source-repo
           git fetch --all
-          git revert ${{ github.event.inputs.commit_sha }} --no-edit
+          # Force revert using 'theirs' strategy to prefer reverted changes
+          git revert ${{ github.event.inputs.commit_sha }} --strategy=theirs --no-edit
 
       - name: Push changes
         run: |
