@@ -36,8 +36,17 @@ jobs:
         run: |
           cd /tmp/source-repo
           git fetch --all
-          # Force revert using 'theirs' strategy to prefer reverted changes
-          git revert ${{ github.event.inputs.commit_sha }} --strategy=theirs --no-edit
+          # Attempt to revert
+          git revert ${{ github.event.inputs.commit_sha }} --no-edit || {
+            # If revert fails due to conflicts, resolve by accepting the reverted state
+            echo "Conflicts detected, forcing revert by accepting reverted state"
+            # Reset index and working tree to match the reverted state
+            git checkout ${{ github.event.inputs.commit_sha }}^ -- .
+            # Add all changes to staging
+            git add .
+            # Continue the revert
+            git revert --continue
+          }
 
       - name: Push changes
         run: |
