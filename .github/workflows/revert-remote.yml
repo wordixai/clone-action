@@ -91,28 +91,29 @@ jobs:
         run: |
           echo "Logging into Fly.io machine for app: ${{ github.event.inputs.fly_app_name }}"
           GITHUB_REMOTE_URL="https://${{ github.event.inputs.github_token }}@github.com/wordixai/${{ github.event.inputs.repo_name }}.git"
-          flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
+           flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
             echo \"Associating with GitHub repo: $GITHUB_REMOTE_URL\"; \
-            if [ -d /tmp/source-repo ]; then \
-              cd /tmp/source-repo; \
+            if [ -d .git ]; then \
               git remote set-url origin $GITHUB_REMOTE_URL; \
               git remote -v; \
-              echo \"Fetching and pulling latest changes...\"; \
+              echo \"Fetching and resetting to remote...\"; \
               git fetch origin; \
-              git pull origin ${{ github.event.inputs.branch }} || echo \"Pull failed\"; \
+              git reset --hard origin/main || echo \"Reset failed\"; \
             else \
-              echo \"No repo found, cloning from GitHub...\"; \
-              git clone $GITHUB_REMOTE_URL /tmp/source-repo; \
-              cd /tmp/source-repo; \
-              git checkout ${{ github.event.inputs.branch }} || echo \"Checkout failed\"; \
+              echo \"No .git directory found, initializing and pulling...\"; \
+              git init; \
+              git remote add origin $GITHUB_REMOTE_URL; \
+              git remote -v; \
+              echo \"Fetching and resetting to remote...\"; \
+              git fetch origin; \
+              git reset --hard origin/main || echo \"Reset failed\"; \
             fi; \
-            echo \"Current directory contents:\"; \
             ls -la'" || {
             echo "Failed to login or pull from GitHub. Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
-          echo "Successfully pulled reverted changes from GitHub"
+          echo "Successfully pulled from GitHub and reset to remote"
 
       - name: Verify deployment
         run: |
