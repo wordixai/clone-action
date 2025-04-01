@@ -26,12 +26,6 @@ jobs:
   clone-push-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout workflow repository
-        uses: actions/checkout@v4
-      - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-        with:
-          version: "0.3.94"
       - name: Clone source repository
         run: |
           echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
@@ -77,7 +71,7 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
         with:
           version: "0.3.94"
-              
+
       - name: Add fly.toml locally for deployment
         run: |
           cd /tmp/source-repo
