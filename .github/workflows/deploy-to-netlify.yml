@@ -1,6 +1,5 @@
 name: Deploy to Netlify
 
-# 触发条件：手动触发并传入参数
 on:
   workflow_dispatch:
     inputs:
@@ -24,41 +23,44 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 使用传入的仓库地址和 GitHub Token 检出代码
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.inputs.repository_url }}  # 从输入参数获取仓库地址
-          token: ${{ github.event.inputs.github_token }}        # 从输入参数获取 GitHub Token
+          repository: ${{ github.event.inputs.repository_url }}
+          token: ${{ github.event.inputs.github_token }}
 
-      # 设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'  # 根据你的项目调整 Node 版本
+          node-version: '20'
 
-      # 安装依赖
       - name: Install dependencies
         run: npm install
 
-      # 构建项目
       - name: Build project
         run: npm run build
 
-      # 安装 Netlify CLI
       - name: Install Netlify CLI
         run: npm install -g netlify-cli
 
-      # 部署到 Netlify
       - name: Deploy to Netlify
         env:
-          NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}  # 从输入参数获取
-          NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}       # 从输入参数获取
-        run: netlify deploy --prod --dir=dist  # 调整 dist 为你的构建输出目录
+          NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}
+          NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}
+        run: netlify deploy --prod --dir=dist
 
-      # 发送通知到 Genfly API
+  notify:
+    runs-on: ubuntu-latest
+    needs: deploy  # 依赖 deploy job
+    if: always()   # 无论 deploy job 是否成功都执行
+    steps:
       - name: Send notification to Genfly
         run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            STATUS="completed"
+          else
+            STATUS="failed"
+          fi
           curl -X POST https://www.genfly.dev/api/send \
             -H "Content-Type: application/json" \
-            -d '{"clientId": "${{ github.event.inputs.app_id }}", "status": "completed"}'
+            -d "{\"clientId\": \"${{ github.event.inputs.app_id }}\", \"status\": \"$STATUS\"}"
