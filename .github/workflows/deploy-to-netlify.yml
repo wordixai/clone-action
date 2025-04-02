@@ -16,6 +16,9 @@ on:
       github_token:
         description: 'GitHub Token'
         required: true
+      app_id:
+        description: 'App ID'
+        required: true
 
 jobs:
   deploy:
@@ -58,4 +61,4 @@ jobs:
         run: |
           curl -X POST https://www.genfly.dev/api/send \
             -H "Content-Type: application/json" \
-            -d '{"clientId": "client-123", "message": "hello world"}'
+            -d '{"clientId": "${{ github.event.inputs.app_id }}", "message": "hello world"}'
