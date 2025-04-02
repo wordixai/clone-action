@@ -44,19 +44,16 @@ jobs:
         run: npm install -g netlify-cli
 
       - name: Deploy to Netlify
+        id: deploy  # 为这一步设置一个 ID，以便后续引用其状态
         env:
           NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}
           NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}
-        run: netlify deploy --prod --dir=dist
+        run: netlify deploy --prod --dir=dist || echo "Deploy failed"
 
-  notify:
-    runs-on: ubuntu-latest
-    needs: deploy  # 依赖 deploy job
-    if: always()   # 无论 deploy job 是否成功都执行
-    steps:
       - name: Send notification to Genfly
+        if: always()  # 无论成功或失败都执行
         run: |
-          if [ "${{ needs.deploy.result }}" == "success" ]; then
+          if [ "${{ job.status }}" == "success" ] && [ "${{ steps.deploy.outcome }}" == "success" ]; then
             STATUS="completed"
           else
             STATUS="failed"
