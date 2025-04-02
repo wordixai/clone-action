@@ -61,4 +61,4 @@ jobs:
         run: |
           curl -X POST https://www.genfly.dev/api/send \
             -H "Content-Type: application/json" \
-            -d '{"clientId": "${{ github.event.inputs.app_id }}", "message": "hello world"}'
+            -d '{"clientId": "${{ github.event.inputs.app_id }}", "status": "completed"}'
