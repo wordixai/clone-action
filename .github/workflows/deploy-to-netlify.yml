@@ -52,3 +52,10 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}  # 从输入参数获取
           NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}       # 从输入参数获取
         run: netlify deploy --prod --dir=dist  # 调整 dist 为你的构建输出目录
+
+      # 发送通知到 Genfly API
+      - name: Send notification to Genfly
+        run: |
+          curl -X POST https://www.genfly.dev/api/send \
+            -H "Content-Type: application/json" \
+            -d '{"clientId": "client-123", "message": "hello world"}'
