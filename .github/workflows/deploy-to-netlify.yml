@@ -1,24 +1,3 @@
-name: Deploy to Netlify
-
-on:
-  workflow_dispatch:
-    inputs:
-      repository_url:
-        description: 'GitHub Repository URL'
-        required: true
-      netlify_auth_token:
-        description: 'Netlify Auth Token'
-        required: true
-      netlify_site_id:
-        description: 'Netlify Site ID'
-        required: true
-      github_token:
-        description: 'GitHub Token'
-        required: true
-      app_id:
-        description: 'App ID'
-        required: true
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -45,18 +24,28 @@ jobs:
       - name: Build project
         run: pnpm run build
 
+      - name: Cache Netlify CLI
+        id: cache-netlify
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-netlify-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-netlify-
+
       - name: Install Netlify CLI
-        run: pnpm add -g netlify-cli
+        if: steps.cache-netlify.outputs.cache-hit != 'true'
+        run: pnpm add -g netlify-cli@18.14.0  # 指定版本
 
       - name: Deploy to Netlify
-        id: deploy  # 为这一步设置一个 ID，以便后续引用其状态
+        id: deploy
         env:
           NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}
           NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}
         run: netlify deploy --prod --dir=dist || echo "Deploy failed"
 
       - name: Send notification to Genfly
-        if: always()  # 无论成功或失败都执行
+        if: always()
         run: |
           if [ "${{ job.status }}" == "success" ] && [ "${{ steps.deploy.outcome }}" == "success" ]; then
             STATUS="completed"
