@@ -45,18 +45,28 @@ jobs:
       - name: Build project
         run: pnpm run build
 
+      - name: Cache Netlify CLI
+        id: cache-netlify
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-netlify-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-netlify-
+
       - name: Install Netlify CLI
-        run: pnpm add -g netlify-cli
+        if: steps.cache-netlify.outputs.cache-hit != 'true'  # 仅在缓存未命中时执行
+        run: pnpm add -g netlify-cli@18.14.0  # 指定版本以加快下载并确保一致性
 
       - name: Deploy to Netlify
-        id: deploy  # 为这一步设置一个 ID，以便后续引用其状态
+        id: deploy
         env:
           NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}
           NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}
         run: netlify deploy --prod --dir=dist || echo "Deploy failed"
 
       - name: Send notification to Genfly
-        if: always()  # 无论成功或失败都执行
+        if: always()
         run: |
           if [ "${{ job.status }}" == "success" ] && [ "${{ steps.deploy.outcome }}" == "success" ]; then
             STATUS="completed"
