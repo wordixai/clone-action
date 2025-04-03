@@ -34,14 +34,19 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
       - name: Install dependencies
-        run: npm install
+        run: pnpm install
 
       - name: Build project
-        run: npm run build
+        run: pnpm run build
 
       - name: Install Netlify CLI
-        run: npm install -g netlify-cli
+        run: pnpm add -g netlify-cli
 
       - name: Deploy to Netlify
         id: deploy  # 为这一步设置一个 ID，以便后续引用其状态
