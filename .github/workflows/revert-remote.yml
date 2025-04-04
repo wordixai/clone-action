@@ -15,9 +15,6 @@ on:
       github_token:
         description: 'The GitHub token for authentication'
         required: true
-      fly_api_token:
-        description: 'The Fly.io API token'
-        required: true
       fly_app_name:
         description: 'The Fly.io app name'
         required: true
@@ -28,10 +25,7 @@ jobs:
     steps:
       - name: Checkout workflow repository
         uses: actions/checkout@v4
-      - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
-        with:
-          version: "0.3.94"
+
       - name: Clone source repository
         run: |
           git clone https://x-access-token:${{ github.event.inputs.github_token }}@github.com/wordixai/${{ github.event.inputs.repo_name }} /tmp/source-repo
@@ -65,57 +59,19 @@ jobs:
           cd /tmp/source-repo
           git push origin ${{ github.event.inputs.branch }}
 
-      - name: Check and start Fly.io machine if not running
-        env:
-          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+      - name: Trigger Fly revert via API
         run: |
-          echo "Checking Fly.io app status: ${{ github.event.inputs.fly_app_name }}"
-          MACHINE_STATUS=$(flyctl status --app ${{ github.event.inputs.fly_app_name }} --json | jq -r '.Machines[0].state // "unknown"')
-          echo "Machine status: $MACHINE_STATUS"
-          if [ "$MACHINE_STATUS" = "unknown" ] || [ "$MACHINE_STATUS" = "stopped" ] || [ "$MACHINE_STATUS" = "suspended" ]; then
-            echo "Starting Fly.io machine..."
-            flyctl machine start --app ${{ github.event.inputs.fly_app_name }} || {
-              echo "Failed to start machine. Full status:"
-              flyctl status --app ${{ github.event.inputs.fly_app_name }}
+          echo "Calling Fly revert API for app: ${{ github.event.inputs.fly_app_name }}"
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"fly_app_name\": \"${{ github.event.inputs.fly_app_name }}\"}" \
+            https://www.genfly.dev/api/fly-revert || {
+              echo "Failed to call Fly revert API"
               exit 1
             }
-            sleep 10
-            echo "Machine started"
-          else
-            echo "Machine already running or in a valid state"
-          fi
-
-      - name: Login to Fly.io machine and pull from GitHub
-        env:
-          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
-        run: |
-          echo "Logging into Fly.io machine for app: ${{ github.event.inputs.fly_app_name }}"
-          GITHUB_REMOTE_URL="https://${{ github.event.inputs.github_token }}@github.com/wordixai/${{ github.event.inputs.repo_name }}.git"
-           flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
-            echo \"Associating with GitHub repo: $GITHUB_REMOTE_URL\"; \
-            if [ -d .git ]; then \
-              git remote set-url origin $GITHUB_REMOTE_URL; \
-              git remote -v; \
-              echo \"Fetching and resetting to remote...\"; \
-              git fetch origin; \
-              git reset --hard origin/main || echo \"Reset failed\"; \
-            else \
-              echo \"No .git directory found, initializing and pulling...\"; \
-              git init; \
-              git remote add origin $GITHUB_REMOTE_URL; \
-              git remote -v; \
-              echo \"Fetching and resetting to remote...\"; \
-              git fetch origin; \
-              git reset --hard origin/main || echo \"Reset failed\"; \
-            fi; \
-            ls -la'" || {
-            echo "Failed to login or pull from GitHub. Fly.io status:"
-            flyctl status --app ${{ github.event.inputs.fly_app_name }}
-            exit 1
-          }
-          echo "Successfully pulled from GitHub and reset to remote"
+          echo "Successfully triggered Fly revert API"
 
       - name: Verify deployment
         run: |
           echo "Reverted commit ${{ github.event.inputs.commit_sha }} in: https://github.com/wordixai/${{ github.event.inputs.repo_name }}"
-          echo "Updated code pulled to Fly.io app: ${{ github.event.inputs.fly_app_name }}"    
+          echo "Triggered Fly revert for app: ${{ github.event.inputs.fly_app_name }}"
