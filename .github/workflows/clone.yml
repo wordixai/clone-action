@@ -150,6 +150,15 @@ jobs:
             exit 1
           }
           echo "Successfully scaled to 1 machine"
+      - name: Reset Fly.io Wireguard
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Resetting Fly.io Wireguard connection"
+          flyctl wireguard reset || {
+            echo "Failed to reset wireguard. Continuing anyway..."
+          }
+          echo "Wireguard reset completed"
       - name: Login to Fly.io machine and pull from GitHub
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
