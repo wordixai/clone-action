@@ -158,6 +158,9 @@ jobs:
           flyctl wireguard reset || {
             echo "Failed to reset wireguard. Continuing anyway..."
           }
+          flyctl wireguard websockets enable || {
+            echo "Failed to enable wireguard websockets. Continuing anyway..."
+          }
           echo "Wireguard reset completed"
       - name: Login to Fly.io machine and pull from GitHub
         env:
