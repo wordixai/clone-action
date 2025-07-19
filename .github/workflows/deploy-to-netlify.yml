@@ -43,27 +43,37 @@ jobs:
         run: pnpm install
 
       - name: Build project
-        run: pnpm run build
+        run: |
+          if ! pnpm run build; then
+            echo "Build failed"
+            exit 1
+          fi
+          if [ ! -d "dist" ]; then
+            echo "Error: dist directory not found"
+            exit 1
+          fi
 
       - name: Cache Netlify CLI
         id: cache-netlify
         uses: actions/cache@v4
         with:
-          path: ~/.pnpm-store
-          key: ${{ runner.os }}-pnpm-netlify-${{ hashFiles('**/pnpm-lock.yaml') }}
+          path: ~/.npm
+          key: ${{ runner.os }}-netlify-cli-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-netlify-
+            ${{ runner.os }}-netlify-cli-
 
       - name: Install Netlify CLI
-        if: steps.cache-netlify.outputs.cache-hit != 'true'  # 仅在缓存未命中时执行
-        run: pnpm add -g netlify-cli@22.3.0 # 指定版本以加快下载并确保一致性
+        if: steps.cache-netlify.outputs.cache-hit != 'true'
+        run: npm install -g netlify-cli@22.3.0
 
       - name: Deploy to Netlify
         id: deploy
         env:
           NETLIFY_AUTH_TOKEN: ${{ github.event.inputs.netlify_auth_token }}
           NETLIFY_SITE_ID: ${{ github.event.inputs.netlify_site_id }}
-        run: netlify deploy --prod --dir=dist || echo "Deploy failed"
+        run: |
+          echo "Deploying to Netlify with Site ID: ${{ github.event.inputs.netlify_site_id }}"
+          netlify deploy --prod --dir=dist --site ${{ github.event.inputs.netlify_site_id }} || { echo "Deploy failed"; exit 1; }
 
       - name: Send notification to Genfly
         if: always()
