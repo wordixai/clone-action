@@ -1,4 +1,4 @@
-name: Clone, Push, and Deploy to Fly
+name: Clone, Push, and Deploy to Fly with State Tracking
 
 on:
   workflow_dispatch:
@@ -25,6 +25,10 @@ on:
         description: "Docker image to deploy (e.g., registry.fly.io/my-app:latest)"
         required: true
         default: "registry.fly.io/ancodeai-app:latest"
+      client_id:
+        description: "Client ID for state tracking"
+        required: true
+        default: "workflow-client"
 
 jobs:
   clone-push-deploy:
@@ -39,6 +43,28 @@ jobs:
           echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
           echo "Cloned repository contents:"
           ls -la /tmp/source-repo
+        # State tracking
+      - name: Send clone state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "clone_repository",
+              "status": "cloned",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "source_repo": "${{ github.event.inputs.source_repo_url }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send clone callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Create new GitHub repository
         run: |
           echo "Creating new repository: ${{ github.event.inputs.new_repo_name }}"
@@ -52,9 +78,44 @@ jobs:
           echo "API Response:"
           cat response.json
           if [ "$RESPONSE" -ne 201 ]; then
-            echo "Failed to create repository. Exiting."
+            echo "Failed to create repository. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "create_repository",
+                "status": "failed_to_create",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "repo_name": "${{ github.event.inputs.new_repo_name }}",
+                "error": "HTTP $RESPONSE - Failed to create repository",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
             exit 1
           fi
+      - name: Send create repository state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "create_repository",
+              "status": "created",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "repo_name": "${{ github.event.inputs.new_repo_name }}",
+              "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send create repository callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Configure Git and push to new repo
         run: |
           cd /tmp/source-repo
@@ -64,31 +125,62 @@ jobs:
           echo "Pushing to: $REMOTE_URL"
           git remote add new-origin "$REMOTE_URL"
           git push new-origin ${{ env.DEFAULT_BRANCH }} || {
+            echo "Push failed. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "push_repository",
+                "status": "failed_to_push",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
+                "error": "Failed to push to branch ${{ env.DEFAULT_BRANCH }}",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
             echo "Push failed. Remote branches:"
             git ls-remote new-origin
             exit 1
           }
+      - name: Send push state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "push_repository",
+              "status": "pushed",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
+              "branch": "${{ env.DEFAULT_BRANCH }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send push callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Checkout workflow repository
         uses: actions/checkout@v4
+
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
         with:
           version: "0.3.94"
+
       - name: Add fly.toml locally for deployment
         run: |
           cd /tmp/source-repo
           cat << 'EOF' > fly.toml
-          # fly.toml app configuration file generated dynamically
-          #
-          # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-          #
-
           app = '${{ github.event.inputs.fly_app_name }}'
           primary_region = 'sin'
-
           [build]
             image = '${{ github.event.inputs.docker_image }}'
-
           [http_service]
             internal_port = 8080
             force_https = true
@@ -97,7 +189,6 @@ jobs:
             min_machines_running = 0
             max_machines_running = 1
             processes = ['app']
-
           [[vm]]
             memory = '1gb'
             cpu_kind = 'shared'
@@ -106,6 +197,7 @@ jobs:
           EOF
           echo "Created fly.toml locally at /tmp/source-repo with image ${{ github.event.inputs.docker_image }}:"
           cat fly.toml
+
       - name: Create Fly.io app via API
         run: |
           echo "Creating Fly.io app: ${{ github.event.inputs.fly_app_name }}"
@@ -123,10 +215,44 @@ jobs:
           echo "API Response:"
           cat response.json
           if [ "$RESPONSE" -ne 201 ]; then
-            echo "Failed to create Fly.io app. Check token or app name uniqueness."
+            echo "Failed to create Fly.io app. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "create_fly_app",
+                "status": "failed_to_create",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "HTTP $RESPONSE - Failed to create Fly.io app",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
             exit 1
           fi
-          echo "App created successfully"
+      - name: Send create Fly.io app state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "create_fly_app",
+              "status": "created",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "app_url": "https://${{ github.event.inputs.fly_app_name }}.fly.dev",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send create Fly.io app callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Deploy to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
@@ -134,34 +260,156 @@ jobs:
           cd /tmp/source-repo
           echo "Deploying to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
           flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only || {
+            echo "Deployment failed. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "deploy_fly_app",
+                "status": "failed_to_deploy",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to deploy to Fly.io",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
             echo "Deployment failed. Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
           echo "Deployment successful"
+      - name: Send deploy state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "deploy_fly_app",
+              "status": "deployed",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "app_url": "https://${{ github.event.inputs.fly_app_name }}.fly.dev",
+              "docker_image": "${{ github.event.inputs.docker_image }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send deploy callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Scale Fly.io app to 1 machine
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
           echo "Scaling Fly.io app ${{ github.event.inputs.fly_app_name }} to 1 machine"
           flyctl scale count 1 --app ${{ github.event.inputs.fly_app_name }} --yes || {
+            echo "Failed to scale app. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "scale_fly_app",
+                "status": "failed_to_scale",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to scale to 1 machine",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
             echo "Failed to scale app. Current status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
           echo "Successfully scaled to 1 machine"
+      - name: Send scale state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "scale_fly_app",
+              "status": "scaled",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "machine_count": 1,
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send scale callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Reset Fly.io Wireguard
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
           echo "Resetting Fly.io Wireguard connection"
           flyctl wireguard reset || {
-            echo "Failed to reset wireguard. Continuing anyway..."
+            echo "Failed to reset wireguard. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "reset_wireguard",
+                "status": "failed_to_reset",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to reset Wireguard",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Continuing anyway..."
           }
           flyctl wireguard websockets enable || {
-            echo "Failed to enable wireguard websockets. Continuing anyway..."
+            echo "Failed to enable wireguard websockets. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "enable_wireguard_websockets",
+                "status": "failed_to_enable",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to enable Wireguard websockets",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Continuing anyway..."
           }
           echo "Wireguard reset completed"
+      - name: Send Wireguard state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "reset_wireguard",
+              "status": "reset",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send Wireguard callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Login to Fly.io machine and pull from GitHub
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
@@ -186,11 +434,47 @@ jobs:
               git reset --hard origin/main || echo \"Reset failed\"; \
             fi; \
             ls -la'" || {
-            echo "Failed to login or pull from GitHub. Fly.io status:"
+            echo "Failed to login or pull from GitHub. Sending failure callback..."
+            curl -X POST \
+              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+              -H "Content-Type: application/json" \
+              "https://www.genfly.dev/api/startup-callback" \
+              -d '{
+                "event": "sync_fly_machine",
+                "status": "failed_to_sync",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to login or pull from GitHub",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
           echo "Successfully pulled from GitHub and reset to remote"
+      - name: Send sync Fly.io machine state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://www.genfly.dev/api/startup-callback" \
+            -d '{
+              "event": "sync_fly_machine",
+              "status": "synced",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send sync Fly.io machine callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Verify push and deployment
         run: |
           echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
