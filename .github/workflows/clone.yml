@@ -206,7 +206,7 @@ jobs:
             -H "Content-Type: application/json" \
             "https://api.machines.dev/v1/apps" \
             -d '{
-              "org_slug": "personal",
+              "org_slug": "needware",
               "app_name": "${{ github.event.inputs.fly_app_name }}",
               "enable_subdomains": true
             }' \
