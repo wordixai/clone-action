@@ -47,9 +47,8 @@ jobs:
       - name: Send clone state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "clone_repository",
               "status": "cloned",
@@ -80,9 +79,8 @@ jobs:
           if [ "$RESPONSE" -ne 201 ]; then
             echo "Failed to create repository. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "create_repository",
                 "status": "failed_to_create",
@@ -97,9 +95,8 @@ jobs:
       - name: Send create repository state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "create_repository",
               "status": "created",
@@ -127,9 +124,8 @@ jobs:
           git push new-origin ${{ env.DEFAULT_BRANCH }} || {
             echo "Push failed. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "push_repository",
                 "status": "failed_to_push",
@@ -146,9 +142,8 @@ jobs:
       - name: Send push state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "push_repository",
               "status": "pushed",
@@ -217,9 +212,8 @@ jobs:
           if [ "$RESPONSE" -ne 201 ]; then
             echo "Failed to create Fly.io app. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "create_fly_app",
                 "status": "failed_to_create",
@@ -234,9 +228,8 @@ jobs:
       - name: Send create Fly.io app state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "create_fly_app",
               "status": "created",
@@ -262,9 +255,8 @@ jobs:
           flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only || {
             echo "Deployment failed. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "deploy_fly_app",
                 "status": "failed_to_deploy",
@@ -282,9 +274,8 @@ jobs:
       - name: Send deploy state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "deploy_fly_app",
               "status": "deployed",
@@ -310,9 +301,8 @@ jobs:
           flyctl scale count 1 --app ${{ github.event.inputs.fly_app_name }} --yes || {
             echo "Failed to scale app. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "scale_fly_app",
                 "status": "failed_to_scale",
@@ -330,9 +320,8 @@ jobs:
       - name: Send scale state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "scale_fly_app",
               "status": "scaled",
@@ -357,9 +346,8 @@ jobs:
           flyctl wireguard reset || {
             echo "Failed to reset wireguard. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "reset_wireguard",
                 "status": "failed_to_reset",
@@ -374,9 +362,8 @@ jobs:
           flyctl wireguard websockets enable || {
             echo "Failed to enable wireguard websockets. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "enable_wireguard_websockets",
                 "status": "failed_to_enable",
@@ -392,9 +379,8 @@ jobs:
       - name: Send Wireguard state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "reset_wireguard",
               "status": "reset",
@@ -436,9 +422,8 @@ jobs:
             ls -la'" || {
             echo "Failed to login or pull from GitHub. Sending failure callback..."
             curl -X POST \
-              -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
               -H "Content-Type: application/json" \
-              "https://www.genfly.dev/api/startup-callback" \
+              "https://www.needware.dev/api/startup-callback" \
               -d '{
                 "event": "sync_fly_machine",
                 "status": "failed_to_sync",
@@ -456,9 +441,8 @@ jobs:
       - name: Send sync Fly.io machine state callback
         run: |
           RESPONSE=$(curl -X POST \
-            -H "Authorization: Bearer ${{ github.event.inputs.fly_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://www.genfly.dev/api/startup-callback" \
+            "https://www.needware.dev/api/startup-callback" \
             -d '{
               "event": "sync_fly_machine",
               "status": "synced",
