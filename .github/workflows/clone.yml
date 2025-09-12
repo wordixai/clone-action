@@ -39,8 +39,7 @@ jobs:
           echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
           git clone ${{ github.event.inputs.source_repo_url }} /tmp/source-repo
           cd /tmp/source-repo
-          DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
-          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
+          echo "Using fixed main branch"
           echo "Cloned repository contents:"
           ls -la /tmp/source-repo
         # State tracking
@@ -121,7 +120,7 @@ jobs:
           REMOTE_URL=https://x-access-token:${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git
           echo "Pushing to: $REMOTE_URL"
           git remote add new-origin "$REMOTE_URL"
-          git push new-origin ${{ env.DEFAULT_BRANCH }} || {
+          git push new-origin main || {
             echo "Push failed. Sending failure callback..."
             curl -X POST \
               -H "Content-Type: application/json" \
@@ -131,7 +130,7 @@ jobs:
                 "status": "failed_to_push",
                 "clientId": "${{ github.event.inputs.client_id }}",
                 "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
-                "error": "Failed to push to branch ${{ env.DEFAULT_BRANCH }}",
+                "error": "Failed to push to branch main",
                 "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
               }' \
               -w "%{http_code}" -s
@@ -149,7 +148,7 @@ jobs:
               "status": "pushed",
               "clientId": "${{ github.event.inputs.client_id }}",
               "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
-              "branch": "${{ env.DEFAULT_BRANCH }}",
+              "branch": "main",
               "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
             }' \
             -w "%{http_code}" -s -o response.json)
