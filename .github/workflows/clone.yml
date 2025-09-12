@@ -117,6 +117,7 @@ jobs:
           cd /tmp/source-repo
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "GitHub Actions Bot"
+          git config --global init.defaultBranch main
           REMOTE_URL=https://x-access-token:${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git
           echo "Pushing to: $REMOTE_URL"
           git remote add new-origin "$REMOTE_URL"
@@ -402,6 +403,7 @@ jobs:
           echo "Logging into Fly.io machine for app: ${{ github.event.inputs.fly_app_name }}"
           GITHUB_REMOTE_URL="https://${{ github.event.inputs.github_token }}@github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}.git"
           flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
+            git config --global init.defaultBranch main; \
             echo \"Associating with GitHub repo: $GITHUB_REMOTE_URL\"; \
             if [ -d .git ]; then \
               git remote set-url origin $GITHUB_REMOTE_URL; \
