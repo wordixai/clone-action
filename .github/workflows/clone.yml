@@ -29,6 +29,16 @@ on:
         description: "Client ID for state tracking"
         required: true
         default: "workflow-client"
+      render_api_token:
+        description: "Render API Token for service creation"
+        required: true
+      render_service_name:
+        description: "Name of the Render service to create"
+        required: true
+        default: "my-render-service"
+      render_owner_id:
+        description: "Render owner ID for the service"
+        required: true
 
 jobs:
   clone-push-deploy:
@@ -156,6 +166,71 @@ jobs:
           echo "Callback HTTP Status: $RESPONSE"
           if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
             echo "Failed to send push callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
+      - name: Create Render service
+        run: |
+          echo "Creating Render service: ${{ github.event.inputs.render_service_name }}"
+          RESPONSE=$(curl -X POST \
+            -H "Accept: application/json" \
+            -H "Authorization: Bearer ${{ github.event.inputs.render_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services" \
+            -d '{
+              "type": "static_site",
+              "autoDeploy": "yes",
+              "serviceDetails": {
+                "pullRequestPreviewsEnabled": "yes",
+                "previews": {
+                  "generation": "off"
+                },
+                "buildCommand": "npm install --legacy-peer-deps && npm run build",
+                "publishPath": "./dist"
+              },
+              "name": "${{ github.event.inputs.render_service_name }}",
+              "ownerId": "${{ github.event.inputs.render_owner_id }}",
+              "repo": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "HTTP Status: $RESPONSE"
+          echo "API Response:"
+          cat response.json
+          if [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to create Render service. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "create_render_service",
+                "status": "failed_to_create",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "service_name": "${{ github.event.inputs.render_service_name }}",
+                "error": "HTTP $RESPONSE - Failed to create Render service",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            exit 1
+          fi
+      - name: Send create Render service state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "create_render_service",
+              "status": "created",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "service_name": "${{ github.event.inputs.render_service_name }}",
+              "service_url": "https://${{ github.event.inputs.render_service_name }}.onrender.com",
+              "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send create Render service callback. Response:"
             cat response.json
             echo "Continuing workflow..."
           fi
@@ -469,4 +544,5 @@ jobs:
       - name: Verify push and deployment
         run: |
           echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
-          echo "Deployed to: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
+          echo "Deployed to Fly.io: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
+          echo "Deployed to Render: https://${{ github.event.inputs.render_service_name }}.onrender.com"

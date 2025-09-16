@@ -1,0 +1,70 @@
+name: Install Dependencies on Fly.io Machine
+
+on:
+  workflow_dispatch:
+    inputs:
+      fly_api_token:
+        description: "Fly.io API Token for authentication"
+        required: true
+      fly_app_name:
+        description: "Name of the Fly.io app to install dependencies on"
+        required: true
+        default: "my-fly-app"
+      custom_dependencies:
+        description: "Custom dependencies to install with pnpm (e.g., 'remotion @remotion/cli @remotion/player framer-motion')"
+        required: false
+        default: ""
+      git_user_email:
+        description: "Git user email for commits"
+        required: false
+        default: "needwareofficial@gmail.com"
+      git_user_name:
+        description: "Git user name for commits"
+        required: false
+        default: "needware"
+      commit_message:
+        description: "Commit message for dependency updates"
+        required: false
+        default: "Update package.json dependencies"
+      client_id:
+        description: "Client ID for state tracking"
+        required: true
+        default: "install-client"
+
+jobs:
+  install-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: "0.3.94"
+
+      - name: Login to Fly.io machine and install dependencies
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
+            if ! command -v pnpm >/dev/null 2>&1; then \
+              npm install -g pnpm; \
+            fi; \
+            git config user.email \"${{ github.event.inputs.git_user_email }}\"; \
+            git config user.name \"${{ github.event.inputs.git_user_name }}\"; \
+            cd /app && pnpm install ${{ github.event.inputs.custom_dependencies }}; \
+            git add package.json; \
+            git commit -m \"${{ github.event.inputs.commit_message }}\"; \
+            git push --set-upstream origin main'"
+
+      - name: Send success callback
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "install_dependencies",
+              "status": "installed",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s

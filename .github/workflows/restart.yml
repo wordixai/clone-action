@@ -1,0 +1,270 @@
+name: Restart and Deploy to Fly.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo_url:
+        description: "URL of the GitHub repository to deploy"
+        required: true
+        default: "https://github.com/fly-apps/hello-fly.git"
+      fly_api_token:
+        description: "Fly.io API Token for deployment"
+        required: true
+      fly_app_name:
+        description: "Name of the Fly.io app to deploy to"
+        required: true
+        default: "my-fly-app"
+      docker_image:
+        description: "Docker image to deploy (e.g., registry.fly.io/my-app:latest)"
+        required: true
+        default: "registry.fly.io/ancodeai-app:latest"
+      client_id:
+        description: "Client ID for state tracking"
+        required: true
+        default: "workflow-client"
+
+jobs:
+  restart-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone source repository
+        run: |
+          echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
+          git clone ${{ github.event.inputs.source_repo_url }} /tmp/source-repo
+          cd /tmp/source-repo
+          echo "Cloned repository contents:"
+          ls -la /tmp/source-repo
+        # State tracking
+      - name: Send clone state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "clone_repository",
+              "status": "cloned",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "source_repo": "${{ github.event.inputs.source_repo_url }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send clone callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
+      - name: Checkout workflow repository
+        uses: actions/checkout@v4
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+        with:
+          version: "0.3.94"
+
+      - name: Add fly.toml locally for deployment
+        run: |
+          cd /tmp/source-repo
+          cat << 'EOF' > fly.toml
+          app = '${{ github.event.inputs.fly_app_name }}'
+          primary_region = 'sin'
+          [build]
+            image = '${{ github.event.inputs.docker_image }}'
+          [http_service]
+            internal_port = 8080
+            force_https = true
+            auto_stop_machines = 'suspend'
+            auto_start_machines = true
+            min_machines_running = 0
+            max_machines_running = 1
+            processes = ['app']
+          [[vm]]
+            memory = '1gb'
+            cpu_kind = 'shared'
+            cpus = 1
+            memory_mb = 1024
+          EOF
+          echo "Created fly.toml locally at /tmp/source-repo with image ${{ github.event.inputs.docker_image }}:"
+          cat fly.toml
+
+      - name: Check if Fly.io app exists
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Checking if Fly.io app exists: ${{ github.event.inputs.fly_app_name }}"
+          flyctl apps list | grep "${{ github.event.inputs.fly_app_name }}" || {
+            echo "App does not exist, creating it..."
+            flyctl apps create ${{ github.event.inputs.fly_app_name }} --org needware || {
+              echo "Failed to create app. Sending failure callback..."
+              curl -X POST \
+                -H "Content-Type: application/json" \
+                "https://www.needware.dev/api/startup-callback" \
+                -d '{
+                  "event": "create_fly_app",
+                  "status": "failed_to_create",
+                  "clientId": "${{ github.event.inputs.client_id }}",
+                  "app_name": "${{ github.event.inputs.fly_app_name }}",
+                  "error": "Failed to create Fly.io app",
+                  "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+                }' \
+                -w "%{http_code}" -s
+              exit 1
+            }
+            echo "App created successfully"
+          }
+
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          cd /tmp/source-repo
+          echo "Deploying to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
+          flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only || {
+            echo "Deployment failed. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "deploy_fly_app",
+                "status": "failed_to_deploy",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to deploy to Fly.io",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Deployment failed. Fly.io status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Deployment successful"
+      - name: Send deploy state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "deploy_fly_app",
+              "status": "deployed",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "app_url": "https://${{ github.event.inputs.fly_app_name }}.fly.dev",
+              "docker_image": "${{ github.event.inputs.docker_image }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send deploy callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
+      - name: Scale Fly.io app to 1 machine
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Scaling Fly.io app ${{ github.event.inputs.fly_app_name }} to 1 machine"
+          flyctl scale count 1 --app ${{ github.event.inputs.fly_app_name }} --yes || {
+            echo "Failed to scale app. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "scale_fly_app",
+                "status": "failed_to_scale",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to scale to 1 machine",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Failed to scale app. Current status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Successfully scaled to 1 machine"
+      - name: Send scale state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "scale_fly_app",
+              "status": "scaled",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "machine_count": 1,
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send scale callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
+      - name: Reset Fly.io Wireguard
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Resetting Fly.io Wireguard connection"
+          flyctl wireguard reset || {
+            echo "Failed to reset wireguard. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "reset_wireguard",
+                "status": "failed_to_reset",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to reset Wireguard",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Continuing anyway..."
+          }
+          flyctl wireguard websockets enable || {
+            echo "Failed to enable wireguard websockets. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "enable_wireguard_websockets",
+                "status": "failed_to_enable",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to enable Wireguard websockets",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Continuing anyway..."
+          }
+          echo "Wireguard reset completed"
+      - name: Send Wireguard state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "reset_wireguard",
+              "status": "reset",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send Wireguard callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
+      - name: Verify deployment
+        run: |
+          echo "Successfully redeployed from: ${{ github.event.inputs.source_repo_url }}"
+          echo "Deployed to: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
