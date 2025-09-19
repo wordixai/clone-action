@@ -7,6 +7,9 @@ on:
         description: "URL of the GitHub repository to deploy"
         required: true
         default: "https://github.com/fly-apps/hello-fly.git"
+      github_token:
+        description: "GitHub Personal Access Token with repo permissions"
+        required: true
       fly_api_token:
         description: "Fly.io API Token for deployment"
         required: true
@@ -27,22 +30,14 @@ jobs:
   restart-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Clone source repository
-        run: |
-          echo "Cloning from: ${{ github.event.inputs.source_repo_url }}"
-          git clone ${{ github.event.inputs.source_repo_url }} /tmp/source-repo
-          cd /tmp/source-repo
-          echo "Cloned repository contents:"
-          ls -la /tmp/source-repo
-        # State tracking
-      - name: Send clone state callback
+      - name: Send start deployment state callback
         run: |
           RESPONSE=$(curl -X POST \
             -H "Content-Type: application/json" \
             "https://www.needware.dev/api/startup-callback" \
             -d '{
-              "event": "clone_repository",
-              "status": "cloned",
+              "event": "start_deployment",
+              "status": "started",
               "clientId": "${{ github.event.inputs.client_id }}",
               "source_repo": "${{ github.event.inputs.source_repo_url }}",
               "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
@@ -50,7 +45,7 @@ jobs:
             -w "%{http_code}" -s -o response.json)
           echo "Callback HTTP Status: $RESPONSE"
           if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
-            echo "Failed to send clone callback. Response:"
+            echo "Failed to send start deployment callback. Response:"
             cat response.json
             echo "Continuing workflow..."
           fi
@@ -63,9 +58,8 @@ jobs:
         with:
           version: "0.3.94"
 
-      - name: Add fly.toml locally for deployment
+      - name: Create fly.toml for deployment
         run: |
-          cd /tmp/source-repo
           cat << 'EOF' > fly.toml
           app = '${{ github.event.inputs.fly_app_name }}'
           primary_region = 'sin'
@@ -80,12 +74,12 @@ jobs:
             max_machines_running = 1
             processes = ['app']
           [[vm]]
-            memory = '1gb'
+            memory = '2gb'
             cpu_kind = 'shared'
             cpus = 1
-            memory_mb = 1024
+            memory_mb = 2048
           EOF
-          echo "Created fly.toml locally at /tmp/source-repo with image ${{ github.event.inputs.docker_image }}:"
+          echo "Created fly.toml with image ${{ github.event.inputs.docker_image }}:"
           cat fly.toml
 
       - name: Check if Fly.io app exists
@@ -114,14 +108,13 @@ jobs:
             echo "App created successfully"
           }
 
-      - name: Deploy to Fly.io
+      - name: Deploy initial Docker image to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
-          cd /tmp/source-repo
-          echo "Deploying to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
+          echo "Deploying initial Docker image to Fly.io app: ${{ github.event.inputs.fly_app_name }}"
           flyctl deploy --app ${{ github.event.inputs.fly_app_name }} --remote-only || {
-            echo "Deployment failed. Sending failure callback..."
+            echo "Initial deployment failed. Sending failure callback..."
             curl -X POST \
               -H "Content-Type: application/json" \
               "https://www.needware.dev/api/startup-callback" \
@@ -130,16 +123,16 @@ jobs:
                 "status": "failed_to_deploy",
                 "clientId": "${{ github.event.inputs.client_id }}",
                 "app_name": "${{ github.event.inputs.fly_app_name }}",
-                "error": "Failed to deploy to Fly.io",
+                "error": "Failed to deploy initial Docker image to Fly.io",
                 "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
               }' \
               -w "%{http_code}" -s
-            echo "Deployment failed. Fly.io status:"
+            echo "Initial deployment failed. Fly.io status:"
             flyctl status --app ${{ github.event.inputs.fly_app_name }}
             exit 1
           }
-          echo "Deployment successful"
-      - name: Send deploy state callback
+          echo "Initial deployment successful"
+      - name: Send initial deploy state callback
         run: |
           RESPONSE=$(curl -X POST \
             -H "Content-Type: application/json" \
@@ -156,7 +149,7 @@ jobs:
             -w "%{http_code}" -s -o response.json)
           echo "Callback HTTP Status: $RESPONSE"
           if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
-            echo "Failed to send deploy callback. Response:"
+            echo "Failed to send initial deploy callback. Response:"
             cat response.json
             echo "Continuing workflow..."
           fi
@@ -264,7 +257,90 @@ jobs:
             echo "Continuing workflow..."
           fi
 
+      - name: Login to Fly.io machine and setup GitHub repository
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Logging into Fly.io machine for app: ${{ github.event.inputs.fly_app_name }}"
+          GITHUB_REMOTE_URL="https://${{ github.event.inputs.github_token }}@github.com/$(echo '${{ github.event.inputs.source_repo_url }}' | sed 's|https://github.com/||' | sed 's|\.git$||')"
+          echo "GitHub repository URL: $GITHUB_REMOTE_URL"
+          
+          flyctl ssh console --app ${{ github.event.inputs.fly_app_name }} -C "sh -c '\
+            echo \"Setting up Git configuration...\"; \
+            git config --global init.defaultBranch main; \
+            git config --global user.email \"github-actions[bot]@users.noreply.github.com\"; \
+            git config --global user.name \"GitHub Actions Bot\"; \
+            echo \"Current directory contents:\"; \
+            ls -la; \
+            echo \"Cloning GitHub repository: $GITHUB_REMOTE_URL\"; \
+            if [ -d .git ]; then \
+              echo \"Git repository already exists, updating...\"; \
+              git remote set-url origin $GITHUB_REMOTE_URL; \
+              git remote -v; \
+              git fetch origin; \
+              git reset --hard origin/main; \
+            else \
+              echo \"Initializing new git repository...\"; \
+              git init; \
+              git remote add origin $GITHUB_REMOTE_URL; \
+              git remote -v; \
+              git fetch origin; \
+              git reset --hard origin/main; \
+            fi; \
+            echo \"Repository setup complete. Current directory contents:\"; \
+            ls -la; \
+            echo \"Checking for package.json...\"; \
+            if [ -f package.json ]; then \
+              echo \"Found package.json, installing dependencies with pnpm...\"; \
+              npm install -g pnpm; \
+              pnpm install; \
+              echo \"Dependencies installed successfully\"; \
+            else \
+              echo \"No package.json found, skipping pnpm install\"; \
+            fi; \
+            echo \"Final directory contents:\"; \
+            ls -la'" || {
+            echo "Failed to login or setup GitHub repository. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "setup_fly_machine",
+                "status": "failed_to_setup",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "app_name": "${{ github.event.inputs.fly_app_name }}",
+                "error": "Failed to login or setup GitHub repository",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Fly.io status:"
+            flyctl status --app ${{ github.event.inputs.fly_app_name }}
+            exit 1
+          }
+          echo "Successfully setup GitHub repository and installed dependencies"
+      - name: Send setup Fly.io machine state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "setup_fly_machine",
+              "status": "setup_complete",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "repo_url": "${{ github.event.inputs.source_repo_url }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send setup Fly.io machine callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Verify deployment
         run: |
-          echo "Successfully redeployed from: ${{ github.event.inputs.source_repo_url }}"
+          echo "Successfully created Fly.io machine and deployed from: ${{ github.event.inputs.source_repo_url }}"
           echo "Deployed to: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
+          echo "Machine is now bound to GitHub repository and dependencies are installed"
