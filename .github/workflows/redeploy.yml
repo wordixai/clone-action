@@ -339,6 +339,23 @@ jobs:
             echo "Continuing workflow..."
           fi
 
+      - name: Send redeploy callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/send-redeploy" \
+            -d '{
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "status": "created"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Redeploy Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send redeploy callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
       - name: Verify deployment
         run: |
           echo "Successfully created Fly.io machine and deployed from: ${{ github.event.inputs.source_repo_url }}"
