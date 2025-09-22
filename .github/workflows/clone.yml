@@ -186,7 +186,7 @@ jobs:
                 "previews": {
                   "generation": "off"
                 },
-                "buildCommand": "pnpm install && pnpm run build",
+                "buildCommand": "pnpm run build",
                 "publishPath": "./dist"
               },
               "name": "${{ github.event.inputs.render_service_name }}",
