@@ -186,7 +186,7 @@ jobs:
                 "previews": {
                   "generation": "off"
                 },
-                "buildCommand": "npm install --legacy-peer-deps && npm run build",
+                "buildCommand": "pnpm install && pnpm run build",
                 "publishPath": "./dist"
               },
               "name": "${{ github.event.inputs.render_service_name }}",
