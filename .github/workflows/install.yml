@@ -51,7 +51,7 @@ jobs:
             git config user.email \"${{ github.event.inputs.git_user_email }}\"; \
             git config user.name \"${{ github.event.inputs.git_user_name }}\"; \
             cd /app && pnpm install ${{ github.event.inputs.custom_dependencies }}; \
-            git add package.json; \
+            git add package.json pnpm-lock.yaml; \
             git commit -m \"${{ github.event.inputs.commit_message }}\"; \
             git push --set-upstream origin main'"
 
