@@ -1,4 +1,4 @@
-name: Clone, Push, and Deploy to Fly with State Tracking
+name: Clone, Push, and Deploy to Fly and Cloudflare Pages with State Tracking
 
 on:
   workflow_dispatch:
@@ -29,16 +29,16 @@ on:
         description: "Client ID for state tracking"
         required: true
         default: "workflow-client"
-      render_api_token:
-        description: "Render API Token for service creation"
+      cloudflare_api_token:
+        description: "Cloudflare API Token for Pages project creation"
         required: true
-      render_service_name:
-        description: "Name of the Render service to create"
+      cloudflare_account_id:
+        description: "Cloudflare Account ID for the Pages project"
         required: true
-        default: "my-render-service"
-      render_owner_id:
-        description: "Render owner ID for the service"
+      cloudflare_project_name:
+        description: "Name of the Cloudflare Pages project to create"
         required: true
+        default: "my-cloudflare-project"
 
 jobs:
   clone-push-deploy:
@@ -170,67 +170,157 @@ jobs:
             echo "Continuing workflow..."
           fi
 
-      - name: Create Render service
+      - name: Create Cloudflare Pages project
         run: |
-          echo "Creating Render service: ${{ github.event.inputs.render_service_name }}"
+          echo "Creating Cloudflare Pages project: ${{ github.event.inputs.cloudflare_project_name }}"
           RESPONSE=$(curl -X POST \
-            -H "Accept: application/json" \
-            -H "Authorization: Bearer ${{ github.event.inputs.render_api_token }}" \
+            -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
             -H "Content-Type: application/json" \
-            "https://api.render.com/v1/services" \
+            "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects" \
             -d '{
-              "type": "static_site",
-              "autoDeploy": "yes",
-              "serviceDetails": {
-                "pullRequestPreviewsEnabled": "yes",
-                "previews": {
-                  "generation": "off"
-                },
-                "buildCommand": "pnpm run build",
-                "publishPath": "./dist"
+              "name": "${{ github.event.inputs.cloudflare_project_name }}",
+              "source": {
+                "type": "github",
+                "config": {
+                  "owner": "${{ github.repository_owner }}",
+                  "repo_name": "${{ github.event.inputs.new_repo_name }}",
+                  "production_branch": "main",
+                  "pr_comments_enabled": true,
+                  "deployments_enabled": true,
+                  "preview_deployment_setting": "all",
+                  "preview_branch_includes": ["*"],
+                  "preview_branch_excludes": [],
+                  "production_deployments_enabled": true,
+                  "build_caching": true
+                }
               },
-              "name": "${{ github.event.inputs.render_service_name }}",
-              "ownerId": "${{ github.event.inputs.render_owner_id }}",
-              "repo": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
+              "build_config": {
+                "build_command": "npm run build",
+                "destination_dir": "dist",
+                "root_dir": "",
+                "web_analytics_tag": "",
+                "web_analytics_token": ""
+              },
+              "deployment_configs": {
+                "production": {
+                  "environment_variables": {},
+                  "kv_namespaces": {},
+                  "durable_object_namespaces": {},
+                  "d1_databases": {},
+                  "r2_buckets": {},
+                  "services": {},
+                  "placement": {
+                    "mode": "smart"
+                  }
+                },
+                "preview": {
+                  "environment_variables": {},
+                  "kv_namespaces": {},
+                  "durable_object_namespaces": {},
+                  "d1_databases": {},
+                  "r2_buckets": {},
+                  "services": {},
+                  "placement": {
+                    "mode": "smart"
+                  }
+                }
+              },
+              "canonical_deployment": {
+                "type": "production",
+                "branch": "main"
+              }
             }' \
             -w "%{http_code}" -s -o response.json)
           echo "HTTP Status: $RESPONSE"
           echo "API Response:"
           cat response.json
-          if [ "$RESPONSE" -ne 201 ]; then
-            echo "Failed to create Render service. Sending failure callback..."
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to create Cloudflare Pages project. Sending failure callback..."
             curl -X POST \
               -H "Content-Type: application/json" \
               "https://www.needware.dev/api/startup-callback" \
               -d '{
-                "event": "create_render_service",
+                "event": "create_cloudflare_project",
                 "status": "failed_to_create",
                 "clientId": "${{ github.event.inputs.client_id }}",
-                "service_name": "${{ github.event.inputs.render_service_name }}",
-                "error": "HTTP $RESPONSE - Failed to create Render service",
+                "project_name": "${{ github.event.inputs.cloudflare_project_name }}",
+                "error": "HTTP $RESPONSE - Failed to create Cloudflare Pages project",
                 "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
               }' \
               -w "%{http_code}" -s
             exit 1
           fi
-      - name: Send create Render service state callback
+      - name: Send create Cloudflare Pages project state callback
         run: |
           RESPONSE=$(curl -X POST \
             -H "Content-Type: application/json" \
             "https://www.needware.dev/api/startup-callback" \
             -d '{
-              "event": "create_render_service",
+              "event": "create_cloudflare_project",
               "status": "created",
               "clientId": "${{ github.event.inputs.client_id }}",
-              "service_name": "${{ github.event.inputs.render_service_name }}",
-              "service_url": "https://${{ github.event.inputs.render_service_name }}.onrender.com",
+              "project_name": "${{ github.event.inputs.cloudflare_project_name }}",
+              "project_url": "https://${{ github.event.inputs.cloudflare_project_name }}.pages.dev",
               "repo_url": "https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}",
               "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
             }' \
             -w "%{http_code}" -s -o response.json)
           echo "Callback HTTP Status: $RESPONSE"
           if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
-            echo "Failed to send create Render service callback. Response:"
+            echo "Failed to send create Cloudflare Pages project callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
+
+      - name: Trigger Cloudflare Pages deployment
+        run: |
+          echo "Triggering Cloudflare Pages deployment for project: ${{ github.event.inputs.cloudflare_project_name }}"
+          RESPONSE=$(curl -X POST \
+            -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects/${{ github.event.inputs.cloudflare_project_name }}/deployments" \
+            -d '{
+              "branch": "main"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "HTTP Status: $RESPONSE"
+          echo "API Response:"
+          cat response.json
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to trigger Cloudflare Pages deployment. Sending failure callback..."
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              "https://www.needware.dev/api/startup-callback" \
+              -d '{
+                "event": "trigger_cloudflare_deployment",
+                "status": "failed_to_trigger",
+                "clientId": "${{ github.event.inputs.client_id }}",
+                "project_name": "${{ github.event.inputs.cloudflare_project_name }}",
+                "error": "HTTP $RESPONSE - Failed to trigger Cloudflare Pages deployment",
+                "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+              }' \
+              -w "%{http_code}" -s
+            echo "Continuing workflow..."
+          else
+            echo "Successfully triggered Cloudflare Pages deployment"
+          fi
+      - name: Send trigger Cloudflare Pages deployment state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/startup-callback" \
+            -d '{
+              "event": "trigger_cloudflare_deployment",
+              "status": "triggered",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "project_name": "${{ github.event.inputs.cloudflare_project_name }}",
+              "project_url": "https://${{ github.event.inputs.cloudflare_project_name }}.pages.dev",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send trigger Cloudflare Pages deployment callback. Response:"
             cat response.json
             echo "Continuing workflow..."
           fi
@@ -545,4 +635,4 @@ jobs:
         run: |
           echo "Pushed to: https://github.com/${{ github.repository_owner }}/${{ github.event.inputs.new_repo_name }}"
           echo "Deployed to Fly.io: https://${{ github.event.inputs.fly_app_name }}.fly.dev"
-          echo "Deployed to Render: https://${{ github.event.inputs.render_service_name }}.onrender.com"
+          echo "Deployed to Cloudflare Pages: https://${{ github.event.inputs.cloudflare_project_name }}.pages.dev"
