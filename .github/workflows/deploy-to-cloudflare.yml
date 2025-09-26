@@ -109,22 +109,48 @@ jobs:
         if: steps.deploy.outcome == 'success'
         run: |
           CUSTOM_DOMAIN="${{ github.event.inputs.cloudflare_project_name }}.needware.dev"
-          echo "Binding custom domain: $CUSTOM_DOMAIN"
+          echo "Attempting to bind custom domain: $CUSTOM_DOMAIN"
           
-          # Add custom domain to the project
+          # First, check if the domain is already bound
+          echo "Checking if domain is already bound..."
+          check_response=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects/${{ github.event.inputs.cloudflare_project_name }}/domains" \
+            -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/json")
+          
+          echo "Domain check response: $check_response"
+          
+          # Check if domain is already bound
+          if echo "$check_response" | grep -q "\"$CUSTOM_DOMAIN\""; then
+            echo "Domain $CUSTOM_DOMAIN is already bound"
+            exit 0
+          fi
+          
+          # Add custom domain using the correct API endpoint and format
+          echo "Adding custom domain to project..."
           response=$(curl -s -X POST \
             "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects/${{ github.event.inputs.cloudflare_project_name }}/domains" \
             -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
             -H "Content-Type: application/json" \
-            -d "{\"domain\":\"$CUSTOM_DOMAIN\"}")
+            -d "{\"name\":\"$CUSTOM_DOMAIN\"}")
           
           echo "Domain binding response: $response"
           
           if echo "$response" | grep -q '"success": true'; then
-            echo "Domain $CUSTOM_DOMAIN bound successfully"
+            echo "✅ Domain $CUSTOM_DOMAIN bound successfully"
+            echo "🌐 Your site will be available at: https://$CUSTOM_DOMAIN"
           else
-            echo "Failed to bind domain $CUSTOM_DOMAIN"
-            echo "$response"
+            echo "❌ Failed to bind domain $CUSTOM_DOMAIN"
+            echo "Error details: $response"
+            echo ""
+            echo "🔧 Manual setup required:"
+            echo "1. Go to Cloudflare Dashboard > Pages > Your Project"
+            echo "2. Click 'Custom domains' tab"
+            echo "3. Add domain: $CUSTOM_DOMAIN"
+            echo "4. Follow the DNS verification steps"
+            echo ""
+            echo "📝 Note: Your site is available at the default .pages.dev URL"
+            echo "Default URL: https://${{ github.event.inputs.cloudflare_project_name }}.pages.dev"
             # Don't fail the workflow if domain binding fails
             echo "Continuing workflow despite domain binding failure"
           fi
