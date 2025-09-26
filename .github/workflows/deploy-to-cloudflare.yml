@@ -105,6 +105,30 @@ jobs:
           directory: dist
           gitHubToken: ${{ github.event.inputs.github_token }}
 
+      - name: Bind custom domain
+        if: steps.deploy.outcome == 'success'
+        run: |
+          CUSTOM_DOMAIN="${{ github.event.inputs.cloudflare_project_name }}.needware.dev"
+          echo "Binding custom domain: $CUSTOM_DOMAIN"
+          
+          # Add custom domain to the project
+          response=$(curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects/${{ github.event.inputs.cloudflare_project_name }}/domains" \
+            -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"domain\":\"$CUSTOM_DOMAIN\"}")
+          
+          echo "Domain binding response: $response"
+          
+          if echo "$response" | grep -q '"success": true'; then
+            echo "Domain $CUSTOM_DOMAIN bound successfully"
+          else
+            echo "Failed to bind domain $CUSTOM_DOMAIN"
+            echo "$response"
+            # Don't fail the workflow if domain binding fails
+            echo "Continuing workflow despite domain binding failure"
+          fi
+
       - name: Send notification to Genfly
         if: always()
         run: |
