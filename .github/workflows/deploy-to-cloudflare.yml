@@ -56,6 +56,45 @@ jobs:
             exit 1
           fi
 
+      - name: Check if Cloudflare Pages project exists
+        id: check_project
+        run: |
+          response=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects/${{ github.event.inputs.cloudflare_project_name }}" \
+            -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/json")
+          
+          echo "Response: $response"
+          
+          # Check if project exists
+          if echo "$response" | grep -q '"success":true'; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Project exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Project does not exist"
+          fi
+
+      - name: Create Cloudflare Pages project
+        if: steps.check_project.outputs.exists == 'false'
+        run: |
+          echo "Creating Cloudflare Pages project: ${{ github.event.inputs.cloudflare_project_name }}"
+          response=$(curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects" \
+            -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"${{ github.event.inputs.cloudflare_project_name }}\"}")
+          
+          echo "Create response: $response"
+          
+          if echo "$response" | grep -q '"success":true'; then
+            echo "Project created successfully"
+          else
+            echo "Failed to create project"
+            echo "$response"
+            exit 1
+          fi
+
       - name: Deploy to Cloudflare Pages
         id: deploy
         uses: cloudflare/pages-action@v1
