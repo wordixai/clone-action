@@ -67,7 +67,7 @@ jobs:
           echo "Response: $response"
           
           # Check if project exists
-          if echo "$response" | grep -q '"success":true'; then
+          if echo "$response" | grep -q '"success": true'; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Project exists"
           else
@@ -87,7 +87,7 @@ jobs:
           
           echo "Create response: $response"
           
-          if echo "$response" | grep -q '"success":true'; then
+          if echo "$response" | grep -q '"success": true'; then
             echo "Project created successfully"
           else
             echo "Failed to create project"
