@@ -83,7 +83,7 @@ jobs:
             "https://api.cloudflare.com/client/v4/accounts/${{ github.event.inputs.cloudflare_account_id }}/pages/projects" \
             -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
             -H "Content-Type: application/json" \
-            -d "{\"name\":\"${{ github.event.inputs.cloudflare_project_name }}\"}")
+            -d "{\"name\":\"${{ github.event.inputs.cloudflare_project_name }}\",\"production_branch\":\"main\"}")
           
           echo "Create response: $response"
           
