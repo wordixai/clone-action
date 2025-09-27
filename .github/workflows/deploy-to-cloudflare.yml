@@ -12,6 +12,9 @@ on:
       cloudflare_account_id:
         description: 'Cloudflare Account ID'
         required: true
+      cloudflare_zone_id:
+        description: 'Cloudflare Zone ID for needware.dev'
+        required: true
       cloudflare_project_name:
         description: 'Cloudflare Pages Project Name'
         required: true
@@ -108,6 +111,47 @@ jobs:
       - name: Bind custom domain
         if: steps.deploy.outcome == 'success'
         run: |
+          # Function to add DNS records
+          add_dns_records() {
+            local domain="$1"
+            local subdomain=$(echo "$domain" | cut -d'.' -f1)
+            local zone_id="${{ github.event.inputs.cloudflare_zone_id }}"
+            
+            echo "Adding DNS records for $domain..."
+            echo "Subdomain: $subdomain"
+            echo "Zone ID: $zone_id"
+            
+            # Add CNAME record pointing to the Pages project
+            pages_url="${{ github.event.inputs.cloudflare_project_name }}.pages.dev"
+            echo "Adding CNAME record: $subdomain -> $pages_url"
+            
+            cname_response=$(curl -s -X POST \
+              "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
+              -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"type\": \"CNAME\",
+                \"name\": \"$subdomain\",
+                \"content\": \"$pages_url\",
+                \"ttl\": 1,
+                \"proxied\": true
+              }")
+            
+            echo "CNAME record response: $cname_response"
+            
+            if echo "$cname_response" | grep -q '"success": true'; then
+              echo "✅ CNAME record added successfully"
+              echo "📝 DNS record: $subdomain.needware.dev -> $pages_url"
+            else
+              echo "❌ Failed to add CNAME record"
+              echo "$cname_response"
+              # Check if record already exists
+              if echo "$cname_response" | grep -q "already exists\|duplicate"; then
+                echo "ℹ️ Record may already exist"
+              fi
+            fi
+          }
+          
           CUSTOM_DOMAIN="${{ github.event.inputs.cloudflare_project_name }}.needware.dev"
           echo "Attempting to bind custom domain: $CUSTOM_DOMAIN"
           
@@ -139,6 +183,10 @@ jobs:
           if echo "$response" | grep -q '"success": true'; then
             echo "✅ Domain $CUSTOM_DOMAIN bound successfully"
             echo "🌐 Your site will be available at: https://$CUSTOM_DOMAIN"
+            
+            # Add DNS records for the custom domain
+            echo "Adding DNS records for $CUSTOM_DOMAIN..."
+            add_dns_records "$CUSTOM_DOMAIN"
           else
             echo "❌ Failed to bind domain $CUSTOM_DOMAIN"
             echo "Error details: $response"
