@@ -27,6 +27,9 @@ on:
       app_id:
         description: 'App ID'
         required: true
+      custom_domain:
+        description: 'Custom domain (e.g., myapp.example.com)'
+        required: true
 
 jobs:
   deploy:
@@ -117,16 +120,14 @@ jobs:
           # Function to add DNS records
           add_dns_records() {
             local domain="$1"
-            local subdomain=$(echo "$domain" | cut -d'.' -f1)
             local zone_id="${{ github.event.inputs.cloudflare_zone_id }}"
             
             echo "Adding DNS records for $domain..."
-            echo "Subdomain: $subdomain"
             echo "Zone ID: $zone_id"
             
             # Add CNAME record pointing to the Pages project
             pages_url="${{ github.event.inputs.cloudflare_project_name }}.pages.dev"
-            echo "Adding CNAME record: $subdomain -> $pages_url"
+            echo "Adding CNAME record: $domain -> $pages_url"
             
             cname_response=$(curl -s -X POST \
               "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
@@ -134,7 +135,7 @@ jobs:
               -H "Content-Type: application/json" \
               -d "{
                 \"type\": \"CNAME\",
-                \"name\": \"$subdomain\",
+                \"name\": \"$domain\",
                 \"content\": \"$pages_url\",
                 \"ttl\": 1,
                 \"proxied\": true
@@ -144,7 +145,7 @@ jobs:
             
             if echo "$cname_response" | grep -q '"success": true'; then
               echo "✅ CNAME record added successfully"
-              echo "📝 DNS record: $subdomain.needware.dev -> $pages_url"
+              echo "📝 DNS record: $domain -> $pages_url"
             else
               echo "❌ Failed to add CNAME record"
               echo "$cname_response"
@@ -155,7 +156,7 @@ jobs:
             fi
           }
           
-          CUSTOM_DOMAIN="${{ github.event.inputs.cloudflare_project_name }}.needware.dev"
+          CUSTOM_DOMAIN="${{ github.event.inputs.custom_domain }}"
           echo "Attempting to bind custom domain: $CUSTOM_DOMAIN"
           
           # First, check if the domain is already bound
