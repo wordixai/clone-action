@@ -9,6 +9,9 @@ on:
       cloudflare_api_token:
         description: 'Cloudflare API Token'
         required: true
+      cloudflare_api_dns_token:
+        description: 'Cloudflare API Token for DNS operations'
+        required: true
       cloudflare_account_id:
         description: 'Cloudflare Account ID'
         required: true
@@ -127,7 +130,7 @@ jobs:
             
             cname_response=$(curl -s -X POST \
               "https://api.cloudflare.com/client/v4/zones/$zone_id/dns_records" \
-              -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_token }}" \
+              -H "Authorization: Bearer ${{ github.event.inputs.cloudflare_api_dns_token }}" \
               -H "Content-Type: application/json" \
               -d "{
                 \"type\": \"CNAME\",
