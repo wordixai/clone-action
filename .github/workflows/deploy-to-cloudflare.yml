@@ -156,7 +156,7 @@ jobs:
             fi
           }
           
-          CUSTOM_DOMAIN="${{ github.event.inputs.custom_domain }}"
+          CUSTOM_DOMAIN="${{ github.event.inputs.custom_domain }}.needware.dev"
           echo "Attempting to bind custom domain: $CUSTOM_DOMAIN"
           
           # First, check if the domain is already bound
