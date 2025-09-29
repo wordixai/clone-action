@@ -248,7 +248,9 @@ jobs:
                 "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
               }' \
               -w "%{http_code}" -s
-            exit 1
+            echo "Continuing workflow despite Cloudflare Pages project creation failure..."
+          else
+            echo "Successfully created Cloudflare Pages project"
           fi
       - name: Send create Cloudflare Pages project state callback
         run: |
@@ -300,7 +302,7 @@ jobs:
                 "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
               }' \
               -w "%{http_code}" -s
-            echo "Continuing workflow..."
+            echo "Continuing workflow despite Cloudflare Pages deployment trigger failure..."
           else
             echo "Successfully triggered Cloudflare Pages deployment"
           fi
