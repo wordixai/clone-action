@@ -206,6 +206,20 @@ jobs:
             echo "Continuing workflow..."
           fi
 
+      - name: Set OPENCLAW_GATEWAY_TOKEN secret
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Setting OPENCLAW_GATEWAY_TOKEN secret..."
+          GATEWAY_TOKEN=$(openssl rand -hex 32)
+          flyctl secrets set OPENCLAW_GATEWAY_TOKEN="$GATEWAY_TOKEN" \
+            --app ${{ github.event.inputs.fly_app_name }} --stage || {
+            echo "Failed to set OPENCLAW_GATEWAY_TOKEN secret"
+            exit 1
+          }
+          echo "OPENCLAW_GATEWAY_TOKEN secret set successfully"
+          echo "GATEWAY_TOKEN: $GATEWAY_TOKEN"
+
       - name: Deploy OpenClaw to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
