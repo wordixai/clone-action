@@ -104,7 +104,7 @@ jobs:
           echo "Checking if Fly.io app exists: ${{ github.event.inputs.fly_app_name }}"
           flyctl apps list | grep "${{ github.event.inputs.fly_app_name }}" || {
             echo "App does not exist, creating it..."
-            flyctl apps create ${{ github.event.inputs.fly_app_name }} --org needware || {
+            flyctl apps create ${{ github.event.inputs.fly_app_name }} --org personal || {
               echo "Failed to create app. Sending failure callback..."
               curl -X POST \
                 -H "Content-Type: application/json" \
