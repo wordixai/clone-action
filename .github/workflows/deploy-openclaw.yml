@@ -104,14 +104,29 @@ jobs:
           echo "Checking if Fly.io app exists: ${{ github.event.inputs.fly_app_name }}"
           flyctl apps list | grep "${{ github.event.inputs.fly_app_name }}" || {
             echo "App does not exist, creating it..."
-            echo "Token info:"
-            flyctl auth whoami
-            # Use Machines API to create app (avoids flyctl org slug issues in CI)
+            # Query personal org slug via GraphQL API
+            ORG_RESPONSE=$(curl -s -X POST \
+              "https://api.fly.io/graphql" \
+              -H "Authorization: Bearer $FLY_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"query": "{ currentUser { personalOrganization { slug } organizations { nodes { slug type } } } }"}')
+            echo "Org query response: $ORG_RESPONSE"
+            ORG_SLUG=$(echo "$ORG_RESPONSE" | jq -r '.data.currentUser.personalOrganization.slug // empty')
+            if [ -z "$ORG_SLUG" ]; then
+              # Fallback: use the first available org
+              ORG_SLUG=$(echo "$ORG_RESPONSE" | jq -r '.data.currentUser.organizations.nodes[0].slug // empty')
+            fi
+            if [ -z "$ORG_SLUG" ]; then
+              echo "Error: Could not determine organization slug from API"
+              exit 1
+            fi
+            echo "Using organization slug: $ORG_SLUG"
+            # Create app via Machines API with org_slug
             CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
               "https://api.machines.dev/v1/apps" \
               -H "Authorization: Bearer $FLY_API_TOKEN" \
               -H "Content-Type: application/json" \
-              -d '{"app_name": "${{ github.event.inputs.fly_app_name }}"}')
+              -d "{\"app_name\": \"${{ github.event.inputs.fly_app_name }}\", \"org_slug\": \"$ORG_SLUG\"}")
             HTTP_CODE=$(echo "$CREATE_RESPONSE" | tail -1)
             BODY=$(echo "$CREATE_RESPONSE" | sed '$d')
             echo "Create app response (HTTP $HTTP_CODE): $BODY"
