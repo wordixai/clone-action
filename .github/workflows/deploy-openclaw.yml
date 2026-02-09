@@ -104,7 +104,15 @@ jobs:
           echo "Checking if Fly.io app exists: ${{ github.event.inputs.fly_app_name }}"
           flyctl apps list | grep "${{ github.event.inputs.fly_app_name }}" || {
             echo "App does not exist, creating it..."
-            flyctl apps create ${{ github.event.inputs.fly_app_name }} --org personal || {
+            echo "Available organizations:"
+            flyctl orgs list
+            ORG_SLUG=$(flyctl orgs list --json | jq -r '.[0].Slug // empty')
+            if [ -z "$ORG_SLUG" ]; then
+              echo "Error: No organizations found for this API token"
+              exit 1
+            fi
+            echo "Using organization: $ORG_SLUG"
+            flyctl apps create ${{ github.event.inputs.fly_app_name }} --org "$ORG_SLUG" || {
               echo "Failed to create app. Sending failure callback..."
               curl -X POST \
                 -H "Content-Type: application/json" \
