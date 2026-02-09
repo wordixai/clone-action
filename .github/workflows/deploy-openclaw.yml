@@ -106,9 +106,11 @@ jobs:
             echo "App does not exist, creating it..."
             echo "Available organizations:"
             flyctl orgs list
-            ORG_SLUG=$(flyctl orgs list --json | jq -r '.[0].Slug // empty')
+            echo "Raw JSON:"
+            flyctl orgs list --json | jq .
+            ORG_SLUG=$(flyctl orgs list --json | jq -r 'if type == "array" then .[0].Slug elif .Slug then .Slug elif .organizations then .organizations.nodes[0].slug else keys[0] as $k | .[$k].Slug // .[$k].slug // empty end')
             if [ -z "$ORG_SLUG" ]; then
-              echo "Error: No organizations found for this API token"
+              echo "Error: Could not determine organization slug"
               exit 1
             fi
             echo "Using organization: $ORG_SLUG"
