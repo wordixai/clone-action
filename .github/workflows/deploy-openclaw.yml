@@ -104,17 +104,18 @@ jobs:
           echo "Checking if Fly.io app exists: ${{ github.event.inputs.fly_app_name }}"
           flyctl apps list | grep "${{ github.event.inputs.fly_app_name }}" || {
             echo "App does not exist, creating it..."
-            echo "Available organizations:"
-            flyctl orgs list
-            echo "Raw JSON:"
-            flyctl orgs list --json | jq .
-            ORG_SLUG=$(flyctl orgs list --json | jq -r 'if type == "array" then .[0].Slug elif .Slug then .Slug elif .organizations then .organizations.nodes[0].slug else keys[0] as $k | .[$k].Slug // .[$k].slug // empty end')
-            if [ -z "$ORG_SLUG" ]; then
-              echo "Error: Could not determine organization slug"
-              exit 1
-            fi
-            echo "Using organization: $ORG_SLUG"
-            flyctl apps create ${{ github.event.inputs.fly_app_name }} --org "$ORG_SLUG" || {
+            echo "Token info:"
+            flyctl auth whoami
+            # Use Machines API to create app (avoids flyctl org slug issues in CI)
+            CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              "https://api.machines.dev/v1/apps" \
+              -H "Authorization: Bearer $FLY_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"app_name": "${{ github.event.inputs.fly_app_name }}"}')
+            HTTP_CODE=$(echo "$CREATE_RESPONSE" | tail -1)
+            BODY=$(echo "$CREATE_RESPONSE" | sed '$d')
+            echo "Create app response (HTTP $HTTP_CODE): $BODY"
+            if [ "$HTTP_CODE" -ne 200 ] && [ "$HTTP_CODE" -ne 201 ]; then
               echo "Failed to create app. Sending failure callback..."
               curl -X POST \
                 -H "Content-Type: application/json" \
@@ -129,7 +130,7 @@ jobs:
                 }' \
                 -w "%{http_code}" -s
               exit 1
-            }
+            fi
             echo "App created successfully"
           }
       - name: Send create Fly.io app state callback
