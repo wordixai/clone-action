@@ -22,6 +22,13 @@ on:
         description: "Name of the Fly.io volume for persistent data"
         required: true
         default: "openclaw_shop_data"
+      openrouter_api_key:
+        description: "OpenRouter API Key"
+        required: true
+      openclaw_config_base64:
+        description: "Base64 encoded openclaw.json config (optional)"
+        required: false
+        default: ""
       client_id:
         description: "Client ID for state tracking"
         required: true
@@ -220,6 +227,18 @@ jobs:
           echo "OPENCLAW_GATEWAY_TOKEN secret set successfully"
           echo "GATEWAY_TOKEN: $GATEWAY_TOKEN"
 
+      - name: Set OPENROUTER_API_KEY secret
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          echo "Setting OPENROUTER_API_KEY secret..."
+          flyctl secrets set OPENROUTER_API_KEY="${{ github.event.inputs.openrouter_api_key }}" \
+            --app ${{ github.event.inputs.fly_app_name }} --stage || {
+            echo "Failed to set OPENROUTER_API_KEY secret"
+            exit 1
+          }
+          echo "OPENROUTER_API_KEY secret set successfully"
+
       - name: Deploy OpenClaw to Fly.io
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
@@ -309,6 +328,32 @@ jobs:
             echo "Failed to send scale callback. Response:"
             cat response.json
             echo "Continuing workflow..."
+          fi
+
+      - name: Write openclaw.json config to /data
+        env:
+          FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+        run: |
+          if [ -n "${{ github.event.inputs.openclaw_config_base64 }}" ]; then
+            echo "Waiting for machine to be ready..."
+            sleep 15
+            # 解码 base64 配置
+            CONFIG=$(echo "${{ github.event.inputs.openclaw_config_base64 }}" | base64 -d)
+            echo "Writing openclaw.json to /data..."
+            echo "$CONFIG" | flyctl ssh console \
+              --app ${{ github.event.inputs.fly_app_name }} \
+              --command "cat > /data/openclaw.json && exit"
+            echo "openclaw.json written successfully"
+            # Restart machine to apply new config
+            echo "Restarting machine to apply config..."
+            MACHINE_ID=$(flyctl machines list --app ${{ github.event.inputs.fly_app_name }} --json | jq -r '.[0].id')
+            echo "Machine ID: $MACHINE_ID"
+            flyctl machine restart "$MACHINE_ID" --app ${{ github.event.inputs.fly_app_name }} || {
+              echo "Failed to restart machine, continuing..."
+            }
+            echo "Machine restarted successfully"
+          else
+            echo "No openclaw config provided, skipping..."
           fi
 
       - name: Verify OpenClaw deployment
