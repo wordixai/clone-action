@@ -342,7 +342,7 @@ jobs:
             echo "Writing openclaw.json to /data..."
             echo "$CONFIG" | flyctl ssh console \
               --app ${{ github.event.inputs.fly_app_name }} \
-              --command "cat > /data/openclaw.json && exit"
+              --command "sh -c 'cat > /data/openclaw.json'"
             echo "openclaw.json written successfully"
             # Restart machine to apply new config
             echo "Restarting machine to apply config..."
