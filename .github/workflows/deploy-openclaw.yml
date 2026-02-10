@@ -348,7 +348,7 @@ jobs:
             echo "Installing @openclaw/feishu plugin..."
             flyctl ssh console \
               --app ${{ github.event.inputs.fly_app_name }} \
-              --command "sh -c 'cd /app && node dist/index.js plugins install @openclaw/feishu'"
+              --command "sh -c 'cd /app && node dist/index.js plugins install ./extensions/feishu'"
             echo "@openclaw/feishu plugin installed successfully"
             # Restart machine to apply new config and plugin
             echo "Restarting machine..."
