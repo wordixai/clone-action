@@ -344,13 +344,7 @@ jobs:
               --app ${{ github.event.inputs.fly_app_name }} \
               --command "sh -c 'cat > /data/openclaw.json'"
             echo "openclaw.json written successfully"
-            # Install feishu plugin
-            echo "Installing @openclaw/feishu plugin..."
-            flyctl ssh console \
-              --app ${{ github.event.inputs.fly_app_name }} \
-              --command "sh -c 'cd /app && node dist/index.js plugins install ./extensions/feishu'"
-            echo "@openclaw/feishu plugin installed successfully"
-            # Restart machine to apply new config and plugin
+            # Restart machine to apply new config
             echo "Restarting machine..."
             MACHINE_ID=$(flyctl machines list --app ${{ github.event.inputs.fly_app_name }} --json | jq -r '.[0].id')
             echo "Machine ID: $MACHINE_ID"
