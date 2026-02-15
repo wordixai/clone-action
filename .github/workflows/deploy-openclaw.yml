@@ -38,6 +38,14 @@ jobs:
   deploy-openclaw:
     runs-on: ubuntu-latest
     steps:
+      - name: Mask sensitive inputs
+        run: |
+          echo "::add-mask::${{ github.event.inputs.fly_api_token }}"
+          echo "::add-mask::${{ github.event.inputs.openrouter_api_key }}"
+          if [ -n "${{ github.event.inputs.openclaw_config_base64 }}" ]; then
+            echo "::add-mask::${{ github.event.inputs.openclaw_config_base64 }}"
+          fi
+
       - name: Send start deployment state callback
         run: |
           RESPONSE=$(curl -X POST \
@@ -220,6 +228,7 @@ jobs:
         run: |
           echo "Setting OPENCLAW_GATEWAY_TOKEN secret..."
           GATEWAY_TOKEN=$(openssl rand -hex 32)
+          echo "::add-mask::$GATEWAY_TOKEN"
           flyctl secrets set OPENCLAW_GATEWAY_TOKEN="$GATEWAY_TOKEN" \
             --app ${{ github.event.inputs.fly_app_name }} --stage || {
             echo "Failed to set OPENCLAW_GATEWAY_TOKEN secret"
@@ -252,9 +261,10 @@ jobs:
       - name: Set OPENROUTER_API_KEY secret
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+          OPENROUTER_API_KEY: ${{ github.event.inputs.openrouter_api_key }}
         run: |
           echo "Setting OPENROUTER_API_KEY secret..."
-          flyctl secrets set OPENROUTER_API_KEY="${{ github.event.inputs.openrouter_api_key }}" \
+          flyctl secrets set OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
             --app ${{ github.event.inputs.fly_app_name }} --stage || {
             echo "Failed to set OPENROUTER_API_KEY secret"
             exit 1
@@ -355,12 +365,14 @@ jobs:
       - name: Write openclaw.json config to /data
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
+          OPENCLAW_CONFIG_BASE64: ${{ github.event.inputs.openclaw_config_base64 }}
         run: |
-          if [ -n "${{ github.event.inputs.openclaw_config_base64 }}" ]; then
+          if [ -n "$OPENCLAW_CONFIG_BASE64" ]; then
             echo "Waiting for machine to be ready..."
             sleep 15
             # 解码 base64 配置
-            CONFIG=$(echo "${{ github.event.inputs.openclaw_config_base64 }}" | base64 -d)
+            CONFIG=$(echo "$OPENCLAW_CONFIG_BASE64" | base64 -d)
+            echo "::add-mask::$CONFIG"
             echo "Writing openclaw.json to /data..."
             echo "$CONFIG" | flyctl ssh console \
               --app ${{ github.event.inputs.fly_app_name }} \
