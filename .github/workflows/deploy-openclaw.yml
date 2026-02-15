@@ -214,6 +214,7 @@ jobs:
           fi
 
       - name: Set OPENCLAW_GATEWAY_TOKEN secret
+        id: set-gateway-token
         env:
           FLY_API_TOKEN: ${{ github.event.inputs.fly_api_token }}
         run: |
@@ -225,7 +226,28 @@ jobs:
             exit 1
           }
           echo "OPENCLAW_GATEWAY_TOKEN secret set successfully"
-          echo "GATEWAY_TOKEN: $GATEWAY_TOKEN"
+          echo "GATEWAY_TOKEN=$GATEWAY_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Send set gateway token state callback
+        run: |
+          RESPONSE=$(curl -X POST \
+            -H "Content-Type: application/json" \
+            "https://www.needware.dev/api/openclaw-callback" \
+            -d '{
+              "event": "set_gateway_token",
+              "status": "token_set",
+              "clientId": "${{ github.event.inputs.client_id }}",
+              "app_name": "${{ github.event.inputs.fly_app_name }}",
+              "gateway_token": "${{ steps.set-gateway-token.outputs.GATEWAY_TOKEN }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }' \
+            -w "%{http_code}" -s -o response.json)
+          echo "Callback HTTP Status: $RESPONSE"
+          if [ "$RESPONSE" -ne 200 ] && [ "$RESPONSE" -ne 201 ]; then
+            echo "Failed to send gateway token callback. Response:"
+            cat response.json
+            echo "Continuing workflow..."
+          fi
 
       - name: Set OPENROUTER_API_KEY secret
         env:
