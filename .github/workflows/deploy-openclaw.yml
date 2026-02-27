@@ -180,7 +180,7 @@ jobs:
             flyctl volumes create ${{ github.event.inputs.volume_name }} \
               --app ${{ github.event.inputs.fly_app_name }} \
               --region ${{ github.event.inputs.primary_region }} \
-              --size 1 \
+              --size 3 \
               --yes || {
               echo "Failed to create volume. Sending failure callback..."
               curl -X POST \
