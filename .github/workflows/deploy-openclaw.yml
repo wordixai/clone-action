@@ -90,7 +90,7 @@ jobs:
             OPENCLAW_STATE_DIR = '/data'
             NODE_OPTIONS = '--max-old-space-size=1536'
             # Point config at a file baked into the image (writable /data mount may be empty on first boot)
-            OPENCLAW_CONFIG_PATH = "/app/fly-config.json"
+            OPENCLAW_CONFIG_PATH = "/data/openclaw.json"
 
           [processes]
             app = 'node dist/index.js gateway --allow-unconfigured --port 3000 --bind lan'
